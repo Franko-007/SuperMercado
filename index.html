@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="App de lista de compras para supermercado">
+    <meta name="theme-color" content="#16a34a">
+    <title>Lista Supermercado</title>
+    
+    <link rel="icon" type="image/png" href="https://i.postimg.cc/6pbD2Q42/icons8-carrito-de-compras-emoji-48.png">
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Lista Compras">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-green-50 to-blue-50">
+    <div id="root"></div>
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // IDENTIFICADOR ÚNICO (Persistencia Robusta)
+        const STORAGE_KEY = 'lista-super-franco-v1';
+
+        // Iconos SVG Originales
+        const ShoppingCartIcon = () => (
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+            </svg>
+        );
+
+        const PlusIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+        );
+
+        const CheckIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+        );
+
+        const Edit2Icon = () => (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+            </svg>
+        );
+
+        const Trash2Icon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+        );
+
+        function ListaCompras() {
+            const [productos, setProductos] = useState(() => {
+                const principal = localStorage.getItem(STORAGE_KEY);
+                const respaldo = localStorage.getItem('productos-supermercado');
+                const legacy = localStorage.getItem('smart-shop-franco-PRO');
+                const dataRaw = principal || respaldo || legacy;
+
+                if (dataRaw) {
+                    try {
+                        const parsed = JSON.parse(dataRaw);
+                        return parsed.map(p => ({ ...p, precio: p.precio || 0 }));
+                    } catch (e) { return []; }
+                }
+                
+                return [
+                    { id: 1, nombre: '4 Quifaros', comprado: false, precio: 0 },
+                    { id: 2, nombre: '4 Mostaccioli', comprado: false, precio: 0 },
+                    { id: 3, nombre: '4 Salsa de Tomate Bolognesa', comprado: false, precio: 0 },
+                    { id: 4, nombre: '4 Cremas Nestle', comprado: false, precio: 0 },
+                    { id: 5, nombre: '6 bebidas 3 Lts.', comprado: false, precio: 0 },
+                    { id: 6, nombre: '4 Pack de Leche Vainilla', comprado: false, precio: 0 },
+                    { id: 7, nombre: 'Detergente Ariel', comprado: false, precio: 0 },
+                    { id: 8, nombre: 'Suavizante', comprado: false, precio: 0 },
+                    { id: 9, nombre: 'Pasta Dental', comprado: false, precio: 0 }
+                ];
+            });
+
+            const [nuevoProducto, setNuevoProducto] = useState('');
+            const [editandoPrecioId, setEditandoPrecioId] = useState(null);
+
+            // Persistencia Robusta: Guarda inmediatamente ante cualquier cambio
+            useEffect(() => {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(productos));
+            }, [productos]);
+
+            const stats = useMemo(() => {
+                const total = productos.reduce((acc, p) => acc + (Number(p.precio) || 0), 0);
+                const comprado = productos.filter(p => p.comprado).reduce((acc, p) => acc + (Number(p.precio) || 0), 0);
+                return { total, comprado, cant: productos.length, compradosCant: productos.filter(p => p.comprado).length };
+            }, [productos]);
+
+            const format = (v) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(v);
+
+            const agregarProducto = () => {
+                if (nuevoProducto.trim() === '') return;
+                setProductos([...productos, { id: Date.now(), nombre: nuevoProducto.trim(), comprado: false, precio: 0 }]);
+                setNuevoProducto('');
+            };
+
+            const toggleComprado = (id) => {
+                setProductos(productos.map(p => p.id === id ? { ...p, comprado: !p.comprado } : p));
+            };
+
+            const eliminarProducto = (id) => {
+                if(confirm('¿Eliminar de la lista permanente?')) {
+                    setProductos(productos.filter(p => p.id !== id));
+                }
+            };
+
+            const actualizarPrecio = (id, valor) => {
+                const num = parseFloat(valor) || 0;
+                setProductos(productos.map(p => p.id === id ? { ...p, precio: num } : p));
+                setEditandoPrecioId(null);
+            };
+
+            return (
+                <div className="min-h-screen p-4 text-gray-800">
+                    <div className="max-w-2xl mx-auto">
+                        {/* Header */}
+                        <div className="bg-white rounded-t-3xl shadow-lg p-6 mb-1">
+                            <div className="flex items-center justify-between mb-2">
+                                <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
+                                    <span className="text-green-600"><ShoppingCartIcon /></span>
+                                    Lista de Compras
+                                </h1>
+                            </div>
+                            
+                            <div className="mt-4 bg-green-50 rounded-xl p-4 border border-green-100">
+                                <div className="flex justify-between items-center mb-2">
+                                    <div>
+                                        <span className="text-xs font-bold text-gray-500 uppercase block">En el carro</span>
+                                        <span className="text-2xl font-black text-green-600 leading-none">{format(stats.comprado)}</span>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-xs font-bold text-gray-500 uppercase block">Total Estimado</span>
+                                        <span className="text-sm font-bold text-gray-700">{format(stats.total)}</span>
+                                    </div>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                    <div
+                                        className="bg-green-500 h-full transition-all duration-500"
+                                        style={{ width: `${stats.cant > 0 ? (stats.compradosCant / stats.cant) * 100 : 0}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Input */}
+                        <div className="bg-white shadow-lg p-4 mb-1">
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={nuevoProducto}
+                                    onChange={(e) => setNuevoProducto(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && agregarProducto()}
+                                    placeholder="Agregar producto..."
+                                    className="flex-1 px-4 py-3 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-green-500 text-lg"
+                                />
+                                <button
+                                    onClick={agregarProducto}
+                                    className="bg-green-600 text-white px-6 py-3 rounded-xl font-semibold flex items-center gap-2 active:scale-95 transition-transform shadow-md"
+                                >
+                                    <PlusIcon />
+                                    Agregar
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Lista */}
+                        <div className="bg-white rounded-b-3xl shadow-lg p-4">
+                            <div className="space-y-2">
+                                {productos.map((producto) => (
+                                    <div
+                                        key={producto.id}
+                                        className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                                            producto.comprado ? 'bg-green-50 border-green-200 opacity-75' : 'bg-white border-gray-100 shadow-sm'
+                                        }`}
+                                    >
+                                        <button
+                                            onClick={() => toggleComprado(producto.id)}
+                                            className={`flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${
+                                                producto.comprado ? 'bg-green-500 border-green-500 text-white shadow-inner' : 'border-gray-300 bg-white'
+                                            }`}
+                                        >
+                                            {producto.comprado && <CheckIcon />}
+                                        </button>
+
+                                        <div className="flex-1 min-w-0">
+                                            <span className={`block text-lg truncate ${producto.comprado ? 'line-through text-gray-400' : 'text-gray-800 font-semibold'}`}>
+                                                {producto.nombre}
+                                            </span>
+                                            
+                                            {editandoPrecioId === producto.id ? (
+                                                <input 
+                                                    autoFocus type="number"
+                                                    className="mt-1 w-24 border-b-2 border-green-500 outline-none text-green-700 font-bold bg-transparent"
+                                                    defaultValue={producto.precio || ''}
+                                                    onBlur={(e) => actualizarPrecio(producto.id, e.target.value)}
+                                                    onKeyDown={(e) => e.key === 'Enter' && actualizarPrecio(producto.id, e.target.value)}
+                                                />
+                                            ) : (
+                                                <button 
+                                                    onClick={() => setEditandoPrecioId(producto.id)}
+                                                    className="flex items-center gap-1 mt-1 text-xs font-bold text-green-600 hover:bg-green-100 px-1 rounded transition-colors group"
+                                                >
+                                                    {producto.precio > 0 ? format(producto.precio) : 'Añadir precio'}
+                                                    <span className="opacity-50 group-hover:opacity-100 transition-opacity"><Edit2Icon /></span>
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <button
+                                            onClick={() => eliminarProducto(producto.id)}
+                                            className="p-2 text-gray-300 hover:text-red-500 transition-colors active:scale-90"
+                                        >
+                                            <Trash2Icon />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Footer / Reseteo */}
+                        <div className="mt-8 text-center pb-10">
+                            <button 
+                                onClick={() => confirm('¿Borrar absolutamente toda la lista?') && (localStorage.clear(), window.location.reload())}
+                                className="text-[10px] font-bold text-gray-400 hover:text-red-600 uppercase tracking-[0.2em] p-4 transition-colors"
+                            >
+                                Resetear Aplicación
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ListaCompras />);
+    </script>
+</body>
+</html>
