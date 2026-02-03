@@ -106,7 +106,6 @@ function App() {
                         {isSyncing ? 'Sincronizando...' : 'Lista Actualizada'}
                     </p>
                 </div>
-                {/* INDICADOR DE ESTADO */}
                 <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${isOnline ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                     <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-red-500'}`} />
                     <span className={`text-[10px] font-black uppercase tracking-widest ${isOnline ? 'text-emerald-500' : 'text-red-500'}`}>
@@ -117,17 +116,17 @@ function App() {
 
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="glass-card p-5 rounded-3xl border-b-4 border-blue-600">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Total Estimado</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-widest">Total Estimado</p>
                     <p className="text-2xl font-black text-white">${stats.total.toLocaleString('es-CL')}</p>
                 </div>
                 <div className="glass-card p-5 rounded-3xl border-b-4 border-emerald-500">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">En Carrito</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-widest">En Carrito</p>
                     <p className="text-2xl font-black text-emerald-400">${stats.comprado.toLocaleString('es-CL')}</p>
                 </div>
             </div>
 
             <div className="glass-card p-4 rounded-2xl mb-8">
-                <div className="flex justify-between text-[10px] font-bold text-white mb-2 uppercase">
+                <div className="flex justify-between text-[10px] font-bold text-white mb-2 uppercase tracking-tighter">
                     <span>Items: {stats.done}/{stats.totalItems}</span>
                     <span>{Math.round(stats.porcentaje)}%</span>
                 </div>
@@ -148,9 +147,10 @@ function App() {
                 <AnimatePresence mode='popLayout'>
                     {productosOrdenados.map((p) => {
                         const cant = obtenerCantidad(p.nombre);
+                        const totalProducto = cant * (Number(p.precio) || 0);
                         return (
                             <motion.div key={p.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                className={`glass-card p-4 rounded-2xl flex items-center gap-4 transition-all duration-300 ${p.comprado ? 'opacity-40 grayscale' : ''}`}
+                                className={`glass-card p-4 rounded-2xl flex items-center gap-4 transition-all duration-300 ${p.comprado ? 'opacity-40 grayscale-[50%]' : ''}`}
                             >
                                 <button onClick={() => setProductos(productos.map(x => x.id === p.id ? {...x, comprado: !x.comprado} : x))}
                                     className={`w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-all duration-300 ${p.comprado ? 'check-active' : 'border-white/20'}`}
@@ -170,9 +170,16 @@ function App() {
                                                 onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
                                             />
                                         ) : (
-                                            <span onClick={() => setEditandoId(p.id)} className="text-[11px] text-blue-400 font-black cursor-pointer bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
-                                                ${Number(p.precio).toLocaleString('es-CL')} c/u
-                                            </span>
+                                            <div className="flex gap-2">
+                                                <span onClick={() => setEditandoId(p.id)} className="text-[11px] text-blue-400 font-black cursor-pointer bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
+                                                    ${Number(p.precio).toLocaleString('es-CL')} c/u
+                                                </span>
+                                                {cant > 1 && (
+                                                    <span className="text-[11px] text-orange-400 font-black bg-orange-400/10 px-2 py-0.5 rounded border border-orange-400/20">
+                                                        Total: ${totalProducto.toLocaleString('es-CL')}
+                                                    </span>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 </div>
