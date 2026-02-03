@@ -5,39 +5,26 @@ body {
     min-height: 100vh;
     color: white;
     font-family: 'Inter', sans-serif;
+    margin: 0;
 }
+
 .sora-font { font-family: 'Sora', sans-serif; }
+
 .glass-card {
     background: rgba(255, 255, 255, 0.03);
     backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.08);
 }
-input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-body {
-    background: #0f172a;
-    background: radial-gradient(circle at top right, #1e293b, #0f172a);
-    background-attachment: fixed;
-    min-height: 100vh;
-    color: white;
-    font-family: 'Inter', sans-serif;
-    margin: 0;
-}
-.sora-font { font-family: 'Sora', sans-serif; }
-.glass-card {
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-}
+
 /* Estilo del Check Verde cuando está activo */
 .check-active {
     background-color: #10b981 !important; /* Verde Esmeralda */
     border-color: #10b981 !important;
     box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
 }
-input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
+
+input::-webkit-outer-spin-button, 
+input::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
