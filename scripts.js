@@ -15,6 +15,7 @@ function App() {
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [isSyncing, setIsSyncing] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
+    const [hasPendingChanges, setHasPendingChanges] = useState(false);
     const [productos, setProductos] = useState(() => {
         const saved = localStorage.getItem(STORAGE_KEY);
         const parsed = saved ? JSON.parse(saved) : [];
@@ -23,6 +24,7 @@ function App() {
 
     const [nuevo, setNuevo] = useState({ nombre: '', precio: '' });
     const [editandoId, setEditandoId] = useState(null);
+    const [editandoNombreId, setEditandoNombreId] = useState(null);
 
     const obtenerCantidad = (nombre) => {
         if (!nombre) return 1;
@@ -32,20 +34,23 @@ function App() {
 
     useEffect(() => {
         cargarDesdeNube();
-        const updateOnlineStatus = () => setIsOnline(navigator.onLine);
-        window.addEventListener('online', updateOnlineStatus);
-        window.addEventListener('offline', updateOnlineStatus);
+        const updateStatus = () => setIsOnline(navigator.onLine);
+        window.addEventListener('online', updateStatus);
+        window.addEventListener('offline', updateStatus);
         return () => {
-            window.removeEventListener('online', updateOnlineStatus);
-            window.removeEventListener('offline', updateOnlineStatus);
+            window.removeEventListener('online', updateStatus);
+            window.removeEventListener('offline', updateStatus);
         };
     }, []);
 
     useEffect(() => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(productos));
-        if (isOnline && isLoaded && !isSyncing) {
-            const timeout = setTimeout(() => enviarANube(productos), 2000);
-            return () => clearTimeout(timeout);
+        if (isLoaded) {
+            setHasPendingChanges(true); // Hay cambios locales nuevos
+            if (isOnline && !isSyncing) {
+                const timeout = setTimeout(() => enviarANube(productos), 2000);
+                return () => clearTimeout(timeout);
+            }
         }
     }, [productos, isLoaded, isOnline]);
 
@@ -57,8 +62,9 @@ function App() {
             const data = await res.json();
             if (data && Array.isArray(data)) {
                 setProductos(data.filter(p => p.nombre && p.nombre.trim() !== ""));
+                setHasPendingChanges(false); // Sincronizado al cargar
             }
-        } catch (e) { console.error("Error al cargar:", e); }
+        } catch (e) { console.error(e); }
         finally { setIsSyncing(false); setIsLoaded(true); }
     };
 
@@ -72,7 +78,8 @@ function App() {
                 mode: 'no-cors', 
                 body: JSON.stringify(datosLimpios) 
             });
-        } catch (e) { console.error("Error al enviar:", e); }
+            setHasPendingChanges(false); // Ya se guardó en la nube
+        } catch (e) { console.error(e); }
         finally { setIsSyncing(false); }
     };
 
@@ -103,30 +110,38 @@ function App() {
                 <div>
                     <h1 className="sora-font text-3xl font-bold text-white tracking-tight">Mi Carrito<span className="text-blue-500">Pro</span></h1>
                     <p className="text-slate-500 text-sm font-medium">
-                        {isSyncing ? 'Sincronizando...' : 'Lista Actualizada'}
+                        {isSyncing ? 'Sincronizando...' : hasPendingChanges ? 'Cambios pendientes' : 'Sincronizado'}
                     </p>
                 </div>
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${isOnline ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
-                    <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-red-500'}`} />
-                    <span className={`text-[10px] font-black uppercase tracking-widest ${isOnline ? 'text-emerald-500' : 'text-red-500'}`}>
-                        {isOnline ? 'Online' : 'Offline'}
-                    </span>
+                
+                <div className="flex flex-col items-end gap-2">
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${isOnline ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+                        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-red-500'}`} />
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${isOnline ? 'text-emerald-500' : 'text-red-500'}`}>
+                            {isOnline ? 'Online' : 'Offline'}
+                        </span>
+                    </div>
+                    {isOnline && (
+                        <div className={`text-[9px] font-bold uppercase tracking-tighter ${hasPendingChanges ? 'text-orange-400' : 'text-blue-400'}`}>
+                            {hasPendingChanges ? '● Pendiente' : '✓✓ Guardado'}
+                        </div>
+                    )}
                 </div>
             </header>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="glass-card p-5 rounded-3xl border-b-4 border-blue-600">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-widest">Total Estimado</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Total Estimado</p>
                     <p className="text-2xl font-black text-white">${stats.total.toLocaleString('es-CL')}</p>
                 </div>
                 <div className="glass-card p-5 rounded-3xl border-b-4 border-emerald-500">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-widest">En Carrito</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">En Carrito</p>
                     <p className="text-2xl font-black text-emerald-400">${stats.comprado.toLocaleString('es-CL')}</p>
                 </div>
             </div>
 
             <div className="glass-card p-4 rounded-2xl mb-8">
-                <div className="flex justify-between text-[10px] font-bold text-white mb-2 uppercase tracking-tighter">
+                <div className="flex justify-between text-[10px] font-bold text-white mb-2 uppercase">
                     <span>Items: {stats.done}/{stats.totalItems}</span>
                     <span>{Math.round(stats.porcentaje)}%</span>
                 </div>
@@ -159,7 +174,25 @@ function App() {
                                 </button>
                                 
                                 <div className="flex-1 min-w-0">
-                                    <h3 className={`font-bold truncate ${p.comprado ? 'line-through text-slate-500' : 'text-white text-lg'}`}>{p.nombre}</h3>
+                                    {editandoNombreId === p.id ? (
+                                        <input 
+                                            autoFocus
+                                            type="text"
+                                            className="bg-white/10 text-white font-bold px-2 py-0.5 rounded outline-none w-full border border-white/20"
+                                            value={p.nombre}
+                                            onChange={(e) => setProductos(productos.map(x => x.id === p.id ? {...x, nombre: e.target.value} : x))}
+                                            onBlur={() => setEditandoNombreId(null)}
+                                            onKeyDown={(e) => e.key === 'Enter' && setEditandoNombreId(null)}
+                                        />
+                                    ) : (
+                                        <h3 
+                                            onClick={() => !p.comprado && setEditandoNombreId(p.id)}
+                                            className={`font-bold truncate ${p.comprado ? 'line-through text-slate-500' : 'text-white text-lg cursor-text'}`}
+                                        >
+                                            {p.nombre}
+                                        </h3>
+                                    )}
+                                    
                                     <div className="flex items-center gap-2 mt-1">
                                         {editandoId === p.id ? (
                                             <input autoFocus type="number" className="bg-blue-600/30 text-blue-400 text-xs font-bold px-2 py-1 rounded outline-none w-24 border border-blue-500"
@@ -171,7 +204,7 @@ function App() {
                                             />
                                         ) : (
                                             <div className="flex gap-2">
-                                                <span onClick={() => setEditandoId(p.id)} className="text-[11px] text-blue-400 font-black cursor-pointer bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
+                                                <span onClick={() => !p.comprado && setEditandoId(p.id)} className="text-[11px] text-blue-400 font-black cursor-pointer bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
                                                     ${Number(p.precio).toLocaleString('es-CL')} c/u
                                                 </span>
                                                 {cant > 1 && (
