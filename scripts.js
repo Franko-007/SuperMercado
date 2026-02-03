@@ -1,8 +1,8 @@
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 const motion = window.Motion.motion;
 const AnimatePresence = window.Motion.AnimatePresence;
 
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxPMi1xDOMWjVo-WTyymaiZ8nK3rJbc3AJsP5-JlLl9nfP39ie_LqhXlo16UbY-Xq6H/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyUR713RdstWO9hpfzWzlzZOQAjAXO8v7RNygyPzF3q_E-Lu0-ffH5oZODEPV3i2wAB/exec";
 const STORAGE_KEY = 'smartcart-pro-v2';
 
 const PRODUCTOS_INICIALES = [
@@ -20,6 +20,7 @@ const PRODUCTOS_INICIALES = [
 function App() {
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isLoaded, setIsLoaded] = useState(false); // Nueva bandera de control
     const [productos, setProductos] = useState(() => {
         const saved = localStorage.getItem(STORAGE_KEY);
         const parsed = saved ? JSON.parse(saved) : [];
@@ -34,36 +35,60 @@ function App() {
         return match ? parseInt(match[1]) : 1;
     };
 
+    // 1. Efecto inicial: Cargar datos
     useEffect(() => {
-        window.addEventListener('online', () => setIsOnline(true));
-        window.addEventListener('offline', () => setIsOnline(false));
-        if (navigator.onLine) cargarDesdeNube();
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        
+        cargarDesdeNube();
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
     }, []);
 
+    // 2. Efecto de guardado: Solo ocurre si ya se cargó la nube
     useEffect(() => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(productos));
-        if (isOnline && !isSyncing) {
+        
+        if (isOnline && isLoaded && !isSyncing) {
             const timeout = setTimeout(() => enviarANube(productos), 2000);
             return () => clearTimeout(timeout);
         }
-    }, [productos]);
+    }, [productos, isLoaded, isOnline]);
 
     const cargarDesdeNube = async () => {
         setIsSyncing(true);
         try {
             const res = await fetch(WEB_APP_URL);
             const data = await res.json();
-            if (data && Array.isArray(data) && data.length > 0) setProductos(data);
-        } catch (e) { console.error(e); }
-        setIsSyncing(false);
+            if (data && Array.isArray(data) && data.length > 0) {
+                setProductos(data);
+            }
+        } catch (e) { 
+            console.error("Error cargando datos:", e); 
+        } finally {
+            setIsSyncing(false);
+            setIsLoaded(true); // Marcamos como cargado aunque falle, para permitir edición
+        }
     };
 
     const enviarANube = async (datos) => {
         setIsSyncing(true);
         try {
-            await fetch(WEB_APP_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(datos) });
-        } catch (e) { console.error(e); }
-        setIsSyncing(false);
+            await fetch(WEB_APP_URL, { 
+                method: 'POST', 
+                mode: 'no-cors', 
+                body: JSON.stringify(datos) 
+            });
+        } catch (e) { 
+            console.error("Error enviando datos:", e); 
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const stats = useMemo(() => {
@@ -73,7 +98,6 @@ function App() {
         return { total, comprado, porcentaje, done: productos.filter(p => p.comprado).length, totalItems: productos.length };
     }, [productos]);
 
-    // Ordenar: No comprados arriba, comprados abajo
     const productosOrdenados = useMemo(() => {
         return [...productos].sort((a, b) => a.comprado - b.comprado);
     }, [productos]);
@@ -91,7 +115,7 @@ function App() {
                 <header className="mb-8 flex justify-between items-center">
                     <div>
                         <h1 className="sora-font text-3xl font-bold text-white tracking-tight">Mi Carrito<span className="text-blue-500">Pro</span></h1>
-                        <p className="text-slate-500 text-sm font-medium">Mi Lista</p>
+                        <p className="text-slate-500 text-sm font-medium">Mi Lista {isSyncing && "• Sincronizando..."}</p>
                     </div>
                 </header>
 
@@ -134,7 +158,6 @@ function App() {
                                 <motion.div key={p.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                     className={`glass-card p-4 rounded-2xl flex items-center gap-4 transition-all duration-300 ${p.comprado ? 'opacity-40 grayscale-[50%]' : ''}`}
                                 >
-                                    {/* BOTÓN CHECK CON VERDE DIFERENCIADOR */}
                                     <button onClick={() => setProductos(productos.map(x => x.id === p.id ? {...x, comprado: !x.comprado} : x))}
                                         className={`w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-all duration-300 ${p.comprado ? 'check-active' : 'border-white/20'}`}
                                     >
@@ -150,7 +173,8 @@ function App() {
                                                     type="number"
                                                     className="bg-blue-600/30 text-blue-400 text-xs font-bold px-2 py-1 rounded outline-none w-24 border border-blue-500"
                                                     onBlur={(e) => {
-                                                        setProductos(productos.map(x => x.id === p.id ? { ...x, precio: Number(e.target.value) || 0 } : x));
+                                                        const valor = Number(e.target.value) || 0;
+                                                        setProductos(productos.map(x => x.id === p.id ? { ...x, precio: valor } : x));
                                                         setEditandoId(null);
                                                     }}
                                                     onKeyDown={(e) => { if(e.key === 'Enter') e.target.blur(); }}
