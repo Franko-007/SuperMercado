@@ -10,21 +10,52 @@ body {
 
 .sora-font { font-family: 'Sora', sans-serif; }
 
-.glass-card {
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+/* Botones de productos en blanco */
+.product-card {
+    background-color: #ffffff !important;
 }
 
-/* Estilo del Check Verde cuando está activo */
+/* El botón circular del check */
+.check-button {
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 0.75rem;
+    border: 2px solid #e2e8f0;
+    background-color: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+/* El check verde forzado */
 .check-active {
-    background-color: #10b981 !important; /* Verde Esmeralda */
+    background-color: #10b981 !important;
     border-color: #10b981 !important;
-    box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
 }
 
 input::-webkit-outer-spin-button, 
 input::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
+}
+
+body {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+.product-img-render {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #f8fafc;
+}
+
+.pb-48 {
+    padding-bottom: 12rem;
 }
