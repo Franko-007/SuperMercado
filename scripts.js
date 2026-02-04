@@ -222,3 +222,11 @@ function App() {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
+// Registro del Service Worker para funcionamiento Offline
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('SmartCart: Modo Offline Activo', reg))
+      .catch(err => console.log('Error al activar modo offline', err));
+  });
+}
