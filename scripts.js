@@ -6,6 +6,8 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyExAMrQchkOQy1mnUm
 const STORAGE_KEY = 'smartcart-pro-v2';
 
 // ─── MAPA DE IMÁGENES ────────────────────────────────────────────────────────
+// IMPORTANT: Keys are checked via String.includes(), sorted longest-first.
+// More specific / longer keys will always match before shorter generic ones.
 const IMAGE_MAP = {
     'quifaro':      'https://i.postimg.cc/NFdtj6bC/1085998.png',
     'bebida':       'https://i.postimg.cc/6qbsX95Z/Bebida.png',
@@ -14,20 +16,23 @@ const IMAGE_MAP = {
     'detergente':   'https://i.postimg.cc/MH3kSWKg/Detergente.jpg',
     'mostaccioli':  'https://i.postimg.cc/zDxYWkSj/mostaccioli.jpg',
     'leche':        'https://i.postimg.cc/0jXgs82L/pack-leche.jpg',
-    'pasta':        'https://i.postimg.cc/7PKr7NMX/pasta-diente.jpg',
+    'pasta dental': 'https://i.postimg.cc/7PKr7NMX/pasta-diente.jpg',
     'queso':        'https://i.postimg.cc/wxwYJkcJ/receta-queso-gouda.jpg',
     'salsa':        'https://i.postimg.cc/fW8QXvjC/Salsa.jpg',
     'suavizante':   'https://i.postimg.cc/VL5QFbDn/suavizante.jpg',
-    // ── Nuevas entradas ──
-    'sal':          'https://img.icons8.com/emoji/96/salt-shaker.png',
-    'aceite':       'https://img.icons8.com/emoji/96/cooking.png',
-    'mayonesa':     'https://img.icons8.com/emoji/96/jar.png',
-    'margarina':    'https://img.icons8.com/emoji/96/butter.png',
-    'confort':      'https://img.icons8.com/emoji/96/toilet-paper.png',
+    // ── Imágenes reales ──
+    'gel de afeitar': 'https://i.postimg.cc/g2d4ZCxX/Gel-Afeitar.jpg',
+    'carne':        'https://i.postimg.cc/RZ9GHkWM/Carne-Molida.jpg',
+    'aceite':       'https://i.postimg.cc/yY0vW188/Aceite-miraflores.png',
+    'confort':      'https://i.postimg.cc/8zDw627r/Confort.jpg',
+    'mayonesa':     'https://i.postimg.cc/SxqVMBnn/Mayonesa.jpg',
+    'margarina':    'https://i.postimg.cc/L8Rv1cJg/Qualy.jpg',
+    'sal':          'https://i.postimg.cc/RZ9GHkWw/Sal.png',
+    // ── Genéricas ──
     'prestobarba':  'https://img.icons8.com/emoji/96/razor.png',
-    'gel':          'https://img.icons8.com/emoji/96/lotion.png',
-    'desodorante':  'https://img.icons8.com/emoji/96/deodorant.png',
-    'afeitar':      'https://img.icons8.com/emoji/96/razor.png',
+    'gel':          'https://i.postimg.cc/g2d4ZCxX/Gel-Afeitar.jpg',
+    'afeitar':      'https://i.postimg.cc/g2d4ZCxX/Gel-Afeitar.jpg',
+    'desodorante':  'https://i.postimg.cc/sfHRKJYC/909888-7791293043791.jpg',
 };
 
 const FALLBACK_IMG = 'https://i.postimg.cc/6pbD2Q42/icons8-carrito-de-compras-emoji-48.png';
@@ -41,8 +46,10 @@ const obtenerCantidad = (nombre) => {
 
 const getProductImage = (nombre) => {
     const n = (nombre || '').toLowerCase();
-    for (const key in IMAGE_MAP) {
-        if (n.includes(key)) return IMAGE_MAP[key];
+    // Sort keys by length descending so specific multi-word keys match before short generic ones
+    const keys = Object.keys(IMAGE_MAP).sort((a, b) => b.length - a.length);
+    for (const key of keys) {
+        if (n.includes(key.trim())) return IMAGE_MAP[key];
     }
     return FALLBACK_IMG;
 };
@@ -90,7 +97,19 @@ function App() {
             const res  = await fetch(WEB_APP_URL + '?t=' + Date.now()); // evita caché
             const data = await res.json();
             if (data && Array.isArray(data) && data.length > 0) {
-                setProductos(data);
+                // ✅ FIX DUPLICADOS: No sobreescribir si hubo un POST propio reciente
+                // (la nube puede tardar en actualizarse y traer datos desactualizados)
+                if (Date.now() - lastPostTs.current > 5000) {
+                    // Deduplicar por id antes de setear
+                    const seen = new Set();
+                    const deduped = data.filter(item => {
+                        const key = String(item.id || item.nombre);
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    });
+                    setProductos(deduped);
+                }
             }
         } catch (e) {
             console.error('cargarDesdeNube:', e);
@@ -173,13 +192,18 @@ function App() {
     // ── Acciones ─────────────────────────────────────────────────────────────
     const agregar = (e) => {
         e.preventDefault();
-        if (!nuevo.nombre.trim()) return;
-        // CORRECCIÓN CLAVE: actualiza primero el estado local, sincroniza después (via useEffect)
-        setProductos(prev => [
-            { id: Date.now(), nombre: nuevo.nombre.trim(), comprado: false, precio: 0 },
-            ...prev
-        ]);
-        setNuevo({ nombre: '' });
+        const nombre = nuevo.nombre.trim();
+        if (!nombre) return;
+        setNuevo({ nombre: '' }); // limpiar ANTES para evitar doble submit en tap rápido
+        setProductos(prev => {
+            // ✅ FIX DUPLICADOS: No agregar si ya existe un producto con mismo nombre
+            const yaExiste = prev.some(x => x.nombre.toLowerCase() === nombre.toLowerCase());
+            if (yaExiste) return prev;
+            return [
+                { id: Date.now(), nombre, comprado: false, precio: 0 },
+                ...prev
+            ];
+        });
     };
 
     const toggleComprado = useCallback((id) => {
@@ -368,6 +392,11 @@ function App() {
                     <p className="text-center text-[9px] text-slate-500 font-bold mt-2 tracking-widest uppercase">
                         {stats.done} de {stats.totalItems} productos completados
                     </p>
+                    <div className="mt-3 pt-3 border-t border-white/5">
+                        <p className="text-center text-[10px] font-bold tracking-widest uppercase bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                            ✦ Creado por Franco ✦
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
