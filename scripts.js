@@ -38,6 +38,15 @@ const IMAGE_MAP = {
 const FALLBACK_IMG = 'https://i.postimg.cc/6pbD2Q42/icons8-carrito-de-compras-emoji-48.png';
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
+// Parser robusto para precios: maneja formato chileno "6.000" → 6000
+const parsePrecio = (val) => {
+    if (val === null || val === undefined || val === '') return 0;
+    if (typeof val === 'number') return isFinite(val) ? Math.max(0, val) : 0;
+    // Si es string con punto de miles chileno: "6.000" → "6000"
+    const str = String(val).trim().replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(str);
+    return isFinite(num) ? Math.max(0, num) : 0;
+};
 const obtenerCantidad = (nombre) => {
     if (!nombre) return 1;
     const match = nombre.match(/^(\d+)/);
@@ -69,6 +78,7 @@ function App() {
     const [nuevo, setNuevo]                   = useState({ nombre: '' });
     const [editandoId, setEditandoId]         = useState(null);
     const [editandoNombreId, setEditandoNombreId] = useState(null);
+    const [confirmReset, setConfirmReset]     = useState(false);
 
     // ── Ref para evitar que cargarDesdeNube() sobreescriba cambios locales ──
     // Guarda el timestamp del último POST exitoso.
@@ -100,14 +110,24 @@ function App() {
                 // ✅ FIX DUPLICADOS: No sobreescribir si hubo un POST propio reciente
                 // (la nube puede tardar en actualizarse y traer datos desactualizados)
                 if (Date.now() - lastPostTs.current > 5000) {
-                    // Deduplicar por id antes de setear
+                    // Normalizar y deduplicar por id (siempre como número)
                     const seen = new Set();
-                    const deduped = data.filter(item => {
-                        const key = String(item.id || item.nombre);
-                        if (seen.has(key)) return false;
-                        seen.add(key);
-                        return true;
-                    });
+                    const deduped = data
+                        .map(item => ({
+                            ...item,
+                            // Asegurar que id sea siempre número para que React no mezcle keys
+                            id: Number(item.id) || Date.now() + Math.random(),
+                            precio: parsePrecio(item.precio),
+                            comprado: Boolean(item.comprado),
+                            nombre: String(item.nombre || '').trim(),
+                        }))
+                        .filter(item => {
+                            if (!item.nombre) return false; // descartar items sin nombre
+                            const key = item.id;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                        });
                     setProductos(deduped);
                 }
             }
@@ -200,18 +220,23 @@ function App() {
             const yaExiste = prev.some(x => x.nombre.toLowerCase() === nombre.toLowerCase());
             if (yaExiste) return prev;
             return [
-                { id: Date.now(), nombre, comprado: false, precio: 0 },
+                { id: Date.now() + Math.floor(Math.random() * 100000), nombre, comprado: false, precio: 0 },
                 ...prev
             ];
         });
     };
 
+    // Guard para evitar doble disparo del toggle (puede pasar con animaciones de layout)
+    const toggleGuard = useRef(new Set());
     const toggleComprado = useCallback((id) => {
+        if (toggleGuard.current.has(id)) return;
+        toggleGuard.current.add(id);
+        setTimeout(() => toggleGuard.current.delete(id), 300);
         setProductos(prev => prev.map(x => x.id === id ? { ...x, comprado: !x.comprado } : x));
     }, []);
 
     const actualizarPrecio = useCallback((id, precio) => {
-        setProductos(prev => prev.map(x => x.id === id ? { ...x, precio: Number(precio) || 0 } : x));
+        setProductos(prev => prev.map(x => x.id === id ? { ...x, precio: parsePrecio(precio) } : x));
     }, []);
 
     const actualizarNombre = useCallback((id, nombre) => {
@@ -221,6 +246,16 @@ function App() {
     const eliminar = useCallback((id) => {
         setProductos(prev => prev.filter(x => x.id !== id));
     }, []);
+
+    const resetearCompra = useCallback(() => {
+        if (!confirmReset) {
+            setConfirmReset(true);
+            setTimeout(() => setConfirmReset(false), 3000);
+            return;
+        }
+        setProductos(prev => prev.map(p => ({ ...p, comprado: false })));
+        setConfirmReset(false);
+    }, [confirmReset]);
 
     // ── Render ────────────────────────────────────────────────────────────────
     return (
@@ -280,7 +315,7 @@ function App() {
                             >
                                 {/* CHECK */}
                                 <button
-                                    onClick={() => toggleComprado(p.id)}
+                                    onClick={(e) => { e.stopPropagation(); toggleComprado(p.id); }}
                                     className={`check-button ${p.comprado ? 'check-active' : ''}`}
                                 >
                                     {p.comprado && <span className="text-white text-xs font-bold">✓</span>}
@@ -392,6 +427,22 @@ function App() {
                     <p className="text-center text-[9px] text-slate-500 font-bold mt-2 tracking-widest uppercase">
                         {stats.done} de {stats.totalItems} productos completados
                     </p>
+                    {stats.done > 0 && (
+                        <motion.button
+                            onClick={resetearCompra}
+                            layout
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0 }}
+                            className={`w-full mt-3 py-2.5 rounded-2xl font-bold text-sm tracking-wide transition-all duration-300 ${
+                                confirmReset
+                                    ? 'bg-red-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.5)]'
+                                    : 'bg-white/8 text-slate-300 border border-white/10 hover:bg-white/12'
+                            }`}
+                        >
+                            {confirmReset ? '⚠️ Confirmar restablecimiento' : '🔄 Restablecer lista'}
+                        </motion.button>
+                    )}
                     <div className="mt-3 pt-3 border-t border-white/5">
                         <p className="text-center text-[10px] font-bold tracking-widest uppercase bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
                             ✦ Creado por Franco ✦
