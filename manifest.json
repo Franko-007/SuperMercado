@@ -10,21 +10,16 @@
   "categories": ["shopping", "productivity"],
   "icons": [
     {
-      "src": "https://i.postimg.cc/brzcJNRF/Whats-App-Image-2026-03-07-at-13-14-51.jpg",
-      "sizes": "48x48",
-      "type": "image/jpeg"
-    },
-    {
-      "src": "https://i.postimg.cc/brzcJNRF/Whats-App-Image-2026-03-07-at-13-14-51.jpg",
+      "src": "https://i.postimg.cc/h4bMb0SR/maskable-icon.png",
       "sizes": "192x192",
-      "type": "image/jpeg",
-      "purpose": "any maskable"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "https://i.postimg.cc/brzcJNRF/Whats-App-Image-2026-03-07-at-13-14-51.jpg",
+      "src": "https://i.postimg.cc/h4bMb0SR/maskable-icon.png",
       "sizes": "512x512",
-      "type": "image/jpeg",
-      "purpose": "any maskable"
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
