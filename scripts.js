@@ -2,12 +2,10 @@ const { useState, useEffect, useRef, useMemo, useCallback } = React;
 const motion = window.Motion.motion;
 const AnimatePresence = window.Motion.AnimatePresence;
 
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyExAMrQchkOQy1mnUmttw2ZkOYbhaHis9frZ9OG1Cw_eXuQfwhPFoK3-xv1cokgxPS/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzbw0AvPwil9owUhJXhyaKDrrMfuHgM52XLPIkRUbw0jpif5c7AxDMxqcSRIrtdTuM/exec";
 const STORAGE_KEY = 'smartcart-pro-v2';
 
 // ─── MAPA DE IMÁGENES ────────────────────────────────────────────────────────
-// IMPORTANT: Keys are checked via String.includes(), sorted longest-first.
-// More specific / longer keys will always match before shorter generic ones.
 const IMAGE_MAP = {
     'quifaro':      'https://i.postimg.cc/NFdtj6bC/1085998.png',
     'bebida':       'https://i.postimg.cc/6qbsX95Z/Bebida.png',
@@ -38,15 +36,14 @@ const IMAGE_MAP = {
 const FALLBACK_IMG = 'https://i.postimg.cc/6pbD2Q42/icons8-carrito-de-compras-emoji-48.png';
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-// Parser robusto para precios: maneja formato chileno "6.000" → 6000
 const parsePrecio = (val) => {
     if (val === null || val === undefined || val === '') return 0;
     if (typeof val === 'number') return isFinite(val) ? Math.max(0, val) : 0;
-    // Si es string con punto de miles chileno: "6.000" → "6000"
     const str = String(val).trim().replace(/\./g, '').replace(',', '.');
     const num = parseFloat(str);
     return isFinite(num) ? Math.max(0, num) : 0;
 };
+
 const obtenerCantidad = (nombre) => {
     if (!nombre) return 1;
     const match = nombre.match(/^(\d+)/);
@@ -55,7 +52,6 @@ const obtenerCantidad = (nombre) => {
 
 const getProductImage = (nombre) => {
     const n = (nombre || '').toLowerCase();
-    // Sort keys by length descending so specific multi-word keys match before short generic ones
     const keys = Object.keys(IMAGE_MAP).sort((a, b) => b.length - a.length);
     for (const key of keys) {
         if (n.includes(key.trim())) return IMAGE_MAP[key];
@@ -66,7 +62,7 @@ const getProductImage = (nombre) => {
 // ─── COMPONENTE PRINCIPAL ────────────────────────────────────────────────────
 function App() {
     const [isOnline, setIsOnline]   = useState(navigator.onLine);
-    const [syncState, setSyncState] = useState('idle'); // 'idle' | 'syncing' | 'error'
+    const [syncState, setSyncState] = useState('idle');
     const [isLoaded, setIsLoaded]   = useState(false);
     const [productos, setProductos] = useState(() => {
         try {
@@ -80,14 +76,10 @@ function App() {
     const [editandoNombreId, setEditandoNombreId] = useState(null);
     const [confirmReset, setConfirmReset]     = useState(false);
 
-    // ── Ref para evitar que cargarDesdeNube() sobreescriba cambios locales ──
-    // Guarda el timestamp del último POST exitoso.
     const lastPostTs    = useRef(0);
-    // Cola de sincronización: si llega un cambio mientras sincroniza, lo guarda.
     const pendingSync   = useRef(null);
     const isSyncingRef  = useRef(false);
 
-    // ── Online / Offline ─────────────────────────────────────────────────────
     useEffect(() => {
         const on  = () => setIsOnline(true);
         const off = () => setIsOnline(false);
@@ -99,30 +91,25 @@ function App() {
         };
     }, []);
 
-    // ── Carga inicial desde la nube ──────────────────────────────────────────
     const cargarDesdeNube = useCallback(async () => {
         if (!navigator.onLine) { setIsLoaded(true); return; }
         setSyncState('syncing');
         try {
-            const res  = await fetch(WEB_APP_URL + '?t=' + Date.now()); // evita caché
+            const res  = await fetch(WEB_APP_URL + '?t=' + Date.now());
             const data = await res.json();
             if (data && Array.isArray(data) && data.length > 0) {
-                // ✅ FIX DUPLICADOS: No sobreescribir si hubo un POST propio reciente
-                // (la nube puede tardar en actualizarse y traer datos desactualizados)
                 if (Date.now() - lastPostTs.current > 5000) {
-                    // Normalizar y deduplicar por id (siempre como número)
                     const seen = new Set();
                     const deduped = data
                         .map(item => ({
                             ...item,
-                            // Asegurar que id sea siempre número para que React no mezcle keys
                             id: Number(item.id) || Date.now() + Math.random(),
                             precio: parsePrecio(item.precio),
                             comprado: Boolean(item.comprado),
                             nombre: String(item.nombre || '').trim(),
                         }))
                         .filter(item => {
-                            if (!item.nombre) return false; // descartar items sin nombre
+                            if (!item.nombre) return false;
                             const key = item.id;
                             if (seen.has(key)) return false;
                             seen.add(key);
@@ -142,11 +129,9 @@ function App() {
 
     useEffect(() => { cargarDesdeNube(); }, []);
 
-    // ── Enviar a la nube (con cola para no perder cambios) ───────────────────
     const enviarANube = useCallback(async (datos) => {
         if (!navigator.onLine || !datos || datos.length === 0) return;
 
-        // Si ya está sincronizando, guarda los datos más nuevos en la cola
         if (isSyncingRef.current) {
             pendingSync.current = datos;
             return;
@@ -155,7 +140,6 @@ function App() {
         isSyncingRef.current = true;
         setSyncState('syncing');
         try {
-            // CORRECCIÓN CLAVE: sin mode:'no-cors' para poder leer la respuesta
             const res = await fetch(WEB_APP_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
@@ -171,7 +155,6 @@ function App() {
             isSyncingRef.current = false;
             setSyncState('idle');
 
-            // Si quedó algo pendiente, lo enviamos ahora
             if (pendingSync.current) {
                 const next = pendingSync.current;
                 pendingSync.current = null;
@@ -180,13 +163,11 @@ function App() {
         }
     }, []);
 
-    // ── Guardar en localStorage + debounce de sincronización (2s) ───────────
     const syncTimer = useRef(null);
     useEffect(() => {
         if (!isLoaded) return;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(productos));
 
-        // Cancela el timer anterior para hacer debounce
         clearTimeout(syncTimer.current);
         syncTimer.current = setTimeout(() => {
             if (navigator.onLine) enviarANube(productos);
@@ -195,7 +176,6 @@ function App() {
         return () => clearTimeout(syncTimer.current);
     }, [productos, isLoaded]);
 
-    // ── Estadísticas ─────────────────────────────────────────────────────────
     const stats = useMemo(() => {
         const total     = productos.reduce((acc, p) => acc + (Number(p.precio) * obtenerCantidad(p.nombre)), 0);
         const comprado  = productos.filter(p => p.comprado).reduce((acc, p) => acc + (Number(p.precio) * obtenerCantidad(p.nombre)), 0);
@@ -209,14 +189,12 @@ function App() {
         [...productos].sort((a, b) => a.comprado - b.comprado),
     [productos]);
 
-    // ── Acciones ─────────────────────────────────────────────────────────────
     const agregar = (e) => {
         e.preventDefault();
         const nombre = nuevo.nombre.trim();
         if (!nombre) return;
-        setNuevo({ nombre: '' }); // limpiar ANTES para evitar doble submit en tap rápido
+        setNuevo({ nombre: '' });
         setProductos(prev => {
-            // ✅ FIX DUPLICADOS: No agregar si ya existe un producto con mismo nombre
             const yaExiste = prev.some(x => x.nombre.toLowerCase() === nombre.toLowerCase());
             if (yaExiste) return prev;
             return [
@@ -226,7 +204,6 @@ function App() {
         });
     };
 
-    // Guard para evitar doble disparo del toggle (puede pasar con animaciones de layout)
     const toggleGuard = useRef(new Set());
     const toggleComprado = useCallback((id) => {
         if (toggleGuard.current.has(id)) return;
@@ -257,10 +234,8 @@ function App() {
         setConfirmReset(false);
     }, [confirmReset]);
 
-    // ── Render ────────────────────────────────────────────────────────────────
     return (
         <div className="max-w-2xl mx-auto p-4 md:p-10 flex flex-col min-h-screen">
-            {/* HEADER */}
             <header className="mb-8 flex justify-between items-start">
                 <div>
                     <h1 className="sora-font text-3xl font-bold text-white tracking-tight">
@@ -286,7 +261,6 @@ function App() {
                 </div>
             </header>
 
-            {/* FORMULARIO */}
             <form onSubmit={agregar} className="flex gap-2 mb-8 bg-white/5 p-3 rounded-2xl border border-white/10">
                 <input
                     type="text"
@@ -298,7 +272,6 @@ function App() {
                 <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-xl font-bold text-xl">+</button>
             </form>
 
-            {/* LISTA */}
             <div className="space-y-3 pb-48">
                 <AnimatePresence mode="popLayout">
                     {productosOrdenados.map((p) => {
@@ -313,7 +286,6 @@ function App() {
                                 transition={{ duration: 0.2 }}
                                 className={`product-card p-4 rounded-2xl flex items-center gap-4 shadow-lg transition-all ${p.comprado ? 'opacity-60' : ''}`}
                             >
-                                {/* CHECK */}
                                 <button
                                     onClick={(e) => { e.stopPropagation(); toggleComprado(p.id); }}
                                     className={`check-button ${p.comprado ? 'check-active' : ''}`}
@@ -321,7 +293,6 @@ function App() {
                                     {p.comprado && <span className="text-white text-xs font-bold">✓</span>}
                                 </button>
 
-                                {/* IMAGEN + INFO */}
                                 <div className="flex-1 min-w-0 flex items-center gap-4">
                                     <div className="w-14 h-14 bg-slate-50 rounded-xl flex items-center justify-center p-1 border border-slate-100 overflow-hidden flex-shrink-0">
                                         <img
@@ -333,7 +304,6 @@ function App() {
                                     </div>
 
                                     <div className="flex-1 truncate">
-                                        {/* NOMBRE EDITABLE */}
                                         {editandoNombreId === p.id ? (
                                             <input
                                                 autoFocus
@@ -352,7 +322,6 @@ function App() {
                                             </h3>
                                         )}
 
-                                        {/* PRECIO EDITABLE */}
                                         <div className="mt-1">
                                             {editandoId === p.id ? (
                                                 <input
@@ -382,7 +351,6 @@ function App() {
                                     </div>
                                 </div>
 
-                                {/* ELIMINAR */}
                                 <button onClick={() => eliminar(p.id)} className="text-slate-300 hover:text-red-500 flex-shrink-0">
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
@@ -403,7 +371,6 @@ function App() {
                 )}
             </div>
 
-            {/* BARRA INFERIOR */}
             <div className="fixed bottom-0 left-0 right-0 p-4 z-50">
                 <div className="max-w-2xl mx-auto bg-slate-900/90 backdrop-blur-xl rounded-3xl p-5 border border-white/10 shadow-2xl">
                     <div className="flex justify-around items-center mb-4">
