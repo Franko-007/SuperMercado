@@ -1,6 +1,8 @@
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 const motion = window.Motion.motion;
 const AnimatePresence = window.Motion.AnimatePresence;
+const Reorder = window.Motion.Reorder;
+const useDragControls = window.Motion.useDragControls;
 
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzbw0AvPwil9owUhJXhyaKDrrMfuHgM52XLPIkRUbw0jpif5c7AxDMxqcSRIrtdTuM/exec";
 const STORAGE_KEY = 'smartcart-pro-v2';
@@ -65,6 +67,116 @@ const getProductImage = (nombre) => {
     return FALLBACK_IMG;
 };
 
+// ─── TARJETA DE PRODUCTO (arrastrable) ────────────────────────────────────────
+function ProductoCard({
+    p, editandoNombreId, setEditandoNombreId, editandoId, setEditandoId,
+    actualizarNombre, actualizarPrecio, toggleComprado, eliminar
+}) {
+    const cant = obtenerCantidad(p.nombre);
+    const dragControls = useDragControls();
+
+    return (
+        <Reorder.Item
+            as="div"
+            value={p}
+            dragListener={false}
+            dragControls={dragControls}
+            layout
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, x: 40 }}
+            transition={{ duration: 0.2 }}
+            className={`product-card p-4 rounded-2xl flex items-center gap-3 shadow-lg transition-all ${p.comprado ? 'opacity-60' : ''}`}
+        >
+            <button
+                onPointerDown={(e) => dragControls.start(e)}
+                className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing flex-shrink-0 -ml-1 px-1 py-2"
+                style={{ touchAction: 'none' }}
+                aria-label="Arrastrar para reordenar"
+            >
+                <svg className="w-3.5 h-5" fill="currentColor" viewBox="0 0 12 20">
+                    <circle cx="3" cy="3" r="1.6"/><circle cx="9" cy="3" r="1.6"/>
+                    <circle cx="3" cy="10" r="1.6"/><circle cx="9" cy="10" r="1.6"/>
+                    <circle cx="3" cy="17" r="1.6"/><circle cx="9" cy="17" r="1.6"/>
+                </svg>
+            </button>
+
+            <button
+                onClick={(e) => { e.stopPropagation(); toggleComprado(p.id); }}
+                className={`check-button ${p.comprado ? 'check-active' : ''}`}
+                aria-label={p.comprado ? `Marcar ${p.nombre} como pendiente` : `Marcar ${p.nombre} como comprado`}
+            >
+                {p.comprado && <span className="text-white text-xs font-bold">✓</span>}
+            </button>
+
+            <div className="flex-1 min-w-0 flex items-center gap-4">
+                <div className="w-14 h-14 bg-slate-50 rounded-xl flex items-center justify-center p-1 border border-slate-100 overflow-hidden flex-shrink-0">
+                    <img
+                        src={getProductImage(p.nombre)}
+                        className="product-img-render"
+                        alt={p.nombre}
+                        onError={e => { e.target.src = FALLBACK_IMG; }}
+                    />
+                </div>
+
+                <div className="flex-1 truncate">
+                    {editandoNombreId === p.id ? (
+                        <input
+                            autoFocus
+                            className="bg-slate-100 text-slate-900 font-bold w-full outline-none rounded px-1 border border-blue-500"
+                            value={p.nombre}
+                            onChange={e => actualizarNombre(p.id, e.target.value)}
+                            onBlur={() => setEditandoNombreId(null)}
+                            onKeyDown={e => e.key === 'Enter' && setEditandoNombreId(null)}
+                        />
+                    ) : (
+                        <h3
+                            onClick={() => setEditandoNombreId(p.id)}
+                            className={`font-bold truncate text-slate-900 text-lg cursor-text ${p.comprado ? 'line-through text-slate-400' : ''}`}
+                        >
+                            {p.nombre}
+                        </h3>
+                    )}
+
+                    <div className="mt-1">
+                        {editandoId === p.id ? (
+                            <input
+                                autoFocus
+                                type="number"
+                                defaultValue={p.precio || ''}
+                                className="bg-blue-50 text-blue-600 font-bold w-24 outline-none border border-blue-500 rounded px-1"
+                                onBlur={e => { actualizarPrecio(p.id, e.target.value); setEditandoId(null); }}
+                                onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                            />
+                        ) : (
+                            <div className="flex gap-2 flex-wrap">
+                                <span
+                                    onClick={() => setEditandoId(p.id)}
+                                    className="text-[11px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-100 cursor-pointer"
+                                >
+                                    ${(p.precio || 0).toLocaleString('es-CL')} c/u
+                                </span>
+                                {cant > 1 && (
+                                    <span className="text-[11px] text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded border border-orange-100">
+                                        Total: ${((p.precio || 0) * cant).toLocaleString('es-CL')}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <button onClick={() => eliminar(p.id)} className="text-slate-300 hover:text-red-500 flex-shrink-0" aria-label={`Eliminar ${p.nombre}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            </button>
+        </Reorder.Item>
+    );
+}
+
 // ─── COMPONENTE PRINCIPAL ────────────────────────────────────────────────────
 function App() {
     const [isOnline, setIsOnline]   = useState(navigator.onLine);
@@ -83,12 +195,40 @@ function App() {
     const [confirmReset, setConfirmReset]     = useState(false);
     const [bottomBarHeight, setBottomBarHeight] = useState(240);
     const [duplicado, setDuplicado]           = useState(false);
+    const [lastEliminado, setLastEliminado]   = useState(null);
+    const [installPrompt, setInstallPrompt]   = useState(null);
+    const [appActualizada, setAppActualizada] = useState(false);
 
     const lastPostTs    = useRef(0);
     const pendingSync   = useRef(null);
     const isSyncingRef  = useRef(false);
     const bottomBarRef  = useRef(null);
     const duplicadoTimer = useRef(null);
+    const undoTimer      = useRef(null);
+
+    // Botón propio de "instalar app": Chrome dispara este evento en vez de
+    // mostrar su banner automático cuando se previene el comportamiento por defecto.
+    useEffect(() => {
+        const onBeforeInstall = (e) => {
+            e.preventDefault();
+            setInstallPrompt(e);
+        };
+        const onInstalled = () => setInstallPrompt(null);
+        window.addEventListener('beforeinstallprompt', onBeforeInstall);
+        window.addEventListener('appinstalled', onInstalled);
+        return () => {
+            window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+            window.removeEventListener('appinstalled', onInstalled);
+        };
+    }, []);
+
+    // Aviso de "nueva versión disponible" — ver el evento 'smartcart-update'
+    // despachado al final de este archivo cuando el Service Worker se actualiza.
+    useEffect(() => {
+        const onUpdate = () => setAppActualizada(true);
+        window.addEventListener('smartcart-update', onUpdate);
+        return () => window.removeEventListener('smartcart-update', onUpdate);
+    }, []);
 
     // Mide el alto real del panel inferior (cambia cuando aparece el botón
     // "Restablecer lista") para que el último producto nunca quede tapado.
@@ -213,6 +353,20 @@ function App() {
         [...productos].sort((a, b) => a.comprado - b.comprado),
     [productos]);
 
+    // Listas separadas para permitir arrastrar y reordenar: solo tiene sentido
+    // reordenar dentro del mismo grupo (pendientes o comprados), ya que el de
+    // comprados siempre va al final.
+    const pendientes = useMemo(() => productos.filter(p => !p.comprado), [productos]);
+    const comprados  = useMemo(() => productos.filter(p => p.comprado), [productos]);
+
+    const reordenarPendientes = useCallback((nuevoOrden) => {
+        setProductos(prev => [...nuevoOrden, ...prev.filter(p => p.comprado)]);
+    }, []);
+
+    const reordenarComprados = useCallback((nuevoOrden) => {
+        setProductos(prev => [...prev.filter(p => !p.comprado), ...nuevoOrden]);
+    }, []);
+
     const agregar = (e) => {
         e.preventDefault();
         const nombre = nuevo.nombre.trim();
@@ -251,8 +405,47 @@ function App() {
     }, []);
 
     const eliminar = useCallback((id) => {
-        setProductos(prev => prev.filter(x => x.id !== id));
+        setProductos(prev => {
+            const item = prev.find(x => x.id === id);
+            if (item) {
+                setLastEliminado({ item });
+                clearTimeout(undoTimer.current);
+                undoTimer.current = setTimeout(() => setLastEliminado(null), 5000);
+            }
+            return prev.filter(x => x.id !== id);
+        });
     }, []);
+
+    const deshacerEliminar = useCallback(() => {
+        if (!lastEliminado) return;
+        clearTimeout(undoTimer.current);
+        setProductos(prev => [lastEliminado.item, ...prev]);
+        setLastEliminado(null);
+    }, [lastEliminado]);
+
+    const instalarApp = useCallback(async () => {
+        if (!installPrompt) return;
+        installPrompt.prompt();
+        await installPrompt.userChoice;
+        setInstallPrompt(null);
+    }, [installPrompt]);
+
+    const compartirLista = useCallback(() => {
+        if (productos.length === 0) return;
+        const lineas = productosOrdenados.map(p => {
+            const cant = obtenerCantidad(p.nombre);
+            const totalLinea = (p.precio || 0) * cant;
+            const precioTxt = p.precio ? ` - $${totalLinea.toLocaleString('es-CL')}` : '';
+            return `${p.comprado ? '✅' : '☐'} ${p.nombre}${precioTxt}`;
+        });
+        const texto = `🛒 Mi Carrito Pro\n\n${lineas.join('\n')}\n\n💰 Total estimado: $${stats.total.toLocaleString('es-CL')}`;
+
+        if (navigator.share) {
+            navigator.share({ title: 'Mi Carrito Pro', text: texto }).catch(() => {});
+        } else {
+            window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
+        }
+    }, [productosOrdenados, stats.total, productos.length]);
 
     const resetearCompra = useCallback(() => {
         if (!confirmReset) {
@@ -278,7 +471,18 @@ function App() {
                         </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                    {productos.length > 0 && (
+                        <button
+                            onClick={compartirLista}
+                            aria-label="Compartir lista"
+                            className="text-slate-400 hover:text-emerald-400 transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342a3 3 0 100-2.684m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                            </svg>
+                        </button>
+                    )}
                     {syncState === 'syncing' && (
                         <svg className="animate-spin w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -290,6 +494,31 @@ function App() {
                     </p>
                 </div>
             </header>
+
+            {appActualizada && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-6 flex items-center justify-between gap-3 bg-emerald-600 text-white text-xs font-bold px-4 py-3 rounded-xl"
+                >
+                    <span>✓ Hay una nueva versión de la app</span>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg uppercase tracking-wide"
+                    >
+                        Actualizar
+                    </button>
+                </motion.div>
+            )}
+
+            {installPrompt && (
+                <button
+                    onClick={instalarApp}
+                    className="mb-6 w-full flex items-center justify-center gap-2 bg-blue-600/15 text-blue-300 border border-blue-500/30 text-xs font-bold uppercase tracking-wider py-2.5 rounded-xl"
+                >
+                    📲 Instalar Mi Carrito Pro en este celular
+                </button>
+            )}
 
             <form onSubmit={agregar} className="flex gap-2 mb-8 bg-white/5 p-3 rounded-2xl border border-white/10">
                 <input
@@ -309,96 +538,46 @@ function App() {
                 </p>
             )}
 
-            <div className="space-y-3" style={{ paddingBottom: bottomBarHeight + 24 }}>
-                <AnimatePresence mode="popLayout">
-                    {productosOrdenados.map((p) => {
-                        const cant = obtenerCantidad(p.nombre);
-                        return (
-                            <motion.div
+            <div style={{ paddingBottom: bottomBarHeight + 24 }}>
+                <Reorder.Group as="div" axis="y" values={pendientes} onReorder={reordenarPendientes} className="space-y-3">
+                    <AnimatePresence mode="popLayout">
+                        {pendientes.map((p) => (
+                            <ProductoCard
                                 key={p.id}
-                                layout
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, x: 40 }}
-                                transition={{ duration: 0.2 }}
-                                className={`product-card p-4 rounded-2xl flex items-center gap-4 shadow-lg transition-all ${p.comprado ? 'opacity-60' : ''}`}
-                            >
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); toggleComprado(p.id); }}
-                                    className={`check-button ${p.comprado ? 'check-active' : ''}`}
-                                    aria-label={p.comprado ? `Marcar ${p.nombre} como pendiente` : `Marcar ${p.nombre} como comprado`}
-                                >
-                                    {p.comprado && <span className="text-white text-xs font-bold">✓</span>}
-                                </button>
+                                p={p}
+                                editandoNombreId={editandoNombreId}
+                                setEditandoNombreId={setEditandoNombreId}
+                                editandoId={editandoId}
+                                setEditandoId={setEditandoId}
+                                actualizarNombre={actualizarNombre}
+                                actualizarPrecio={actualizarPrecio}
+                                toggleComprado={toggleComprado}
+                                eliminar={eliminar}
+                            />
+                        ))}
+                    </AnimatePresence>
+                </Reorder.Group>
 
-                                <div className="flex-1 min-w-0 flex items-center gap-4">
-                                    <div className="w-14 h-14 bg-slate-50 rounded-xl flex items-center justify-center p-1 border border-slate-100 overflow-hidden flex-shrink-0">
-                                        <img
-                                            src={getProductImage(p.nombre)}
-                                            className="product-img-render"
-                                            alt={p.nombre}
-                                            onError={e => { e.target.src = FALLBACK_IMG; }}
-                                        />
-                                    </div>
-
-                                    <div className="flex-1 truncate">
-                                        {editandoNombreId === p.id ? (
-                                            <input
-                                                autoFocus
-                                                className="bg-slate-100 text-slate-900 font-bold w-full outline-none rounded px-1 border border-blue-500"
-                                                value={p.nombre}
-                                                onChange={e => actualizarNombre(p.id, e.target.value)}
-                                                onBlur={() => setEditandoNombreId(null)}
-                                                onKeyDown={e => e.key === 'Enter' && setEditandoNombreId(null)}
-                                            />
-                                        ) : (
-                                            <h3
-                                                onClick={() => setEditandoNombreId(p.id)}
-                                                className={`font-bold truncate text-slate-900 text-lg cursor-text ${p.comprado ? 'line-through text-slate-400' : ''}`}
-                                            >
-                                                {p.nombre}
-                                            </h3>
-                                        )}
-
-                                        <div className="mt-1">
-                                            {editandoId === p.id ? (
-                                                <input
-                                                    autoFocus
-                                                    type="number"
-                                                    defaultValue={p.precio || ''}
-                                                    className="bg-blue-50 text-blue-600 font-bold w-24 outline-none border border-blue-500 rounded px-1"
-                                                    onBlur={e => { actualizarPrecio(p.id, e.target.value); setEditandoId(null); }}
-                                                    onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                                                />
-                                            ) : (
-                                                <div className="flex gap-2 flex-wrap">
-                                                    <span
-                                                        onClick={() => setEditandoId(p.id)}
-                                                        className="text-[11px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-100 cursor-pointer"
-                                                    >
-                                                        ${(p.precio || 0).toLocaleString('es-CL')} c/u
-                                                    </span>
-                                                    {cant > 1 && (
-                                                        <span className="text-[11px] text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded border border-orange-100">
-                                                            Total: ${((p.precio || 0) * cant).toLocaleString('es-CL')}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <button onClick={() => eliminar(p.id)} className="text-slate-300 hover:text-red-500 flex-shrink-0" aria-label={`Eliminar ${p.nombre}`}>
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                </button>
-                            </motion.div>
-                        );
-                    })}
-                </AnimatePresence>
+                {comprados.length > 0 && (
+                    <Reorder.Group as="div" axis="y" values={comprados} onReorder={reordenarComprados} className="space-y-3 mt-3">
+                        <AnimatePresence mode="popLayout">
+                            {comprados.map((p) => (
+                                <ProductoCard
+                                    key={p.id}
+                                    p={p}
+                                    editandoNombreId={editandoNombreId}
+                                    setEditandoNombreId={setEditandoNombreId}
+                                    editandoId={editandoId}
+                                    setEditandoId={setEditandoId}
+                                    actualizarNombre={actualizarNombre}
+                                    actualizarPrecio={actualizarPrecio}
+                                    toggleComprado={toggleComprado}
+                                    eliminar={eliminar}
+                                />
+                            ))}
+                        </AnimatePresence>
+                    </Reorder.Group>
+                )}
 
                 {productos.length === 0 && isLoaded && (
                     <div className="text-center py-16 text-slate-500">
@@ -418,6 +597,23 @@ function App() {
                     </div>
                 )}
             </div>
+
+            <AnimatePresence>
+                {lastEliminado && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 20 }}
+                        className="fixed left-0 right-0 z-[60] px-4"
+                        style={{ bottom: bottomBarHeight + 16 }}
+                    >
+                        <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 bg-slate-800 border border-white/10 rounded-2xl px-4 py-3 shadow-2xl">
+                            <p className="text-sm text-slate-200 truncate">🗑️ "{lastEliminado.item.nombre}" eliminado</p>
+                            <button onClick={deshacerEliminar} className="text-emerald-400 font-bold text-sm flex-shrink-0">Deshacer</button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <div
                 ref={bottomBarRef}
@@ -520,6 +716,20 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js')
             .then(reg => console.log('SmartCart: Modo Offline Activo', reg))
             .catch(err => console.log('Error al activar modo offline', err));
+    });
+
+    // 'controllerchange' se dispara cuando un Service Worker nuevo toma el
+    // control. Solo avisamos si YA había un controlador antes (es decir, esto
+    // es una actualización real) — así no mostramos "app actualizada" en la
+    // primerísima instalación, donde no había nada que actualizar.
+    const yaTeniaControlador = !!navigator.serviceWorker.controller;
+    let refrescando = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refrescando) return;
+        refrescando = true;
+        if (yaTeniaControlador) {
+            window.dispatchEvent(new CustomEvent('smartcart-update'));
+        }
     });
 }
 
