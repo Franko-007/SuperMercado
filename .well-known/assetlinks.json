@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.franko_007.twa",
+        "sha256_cert_fingerprints": ["C9:AA:43:CC:A4:59:5A:A2:91:97:95:9F:5D:9E:8A:1E:59:A0:1F:99:BF:26:7C:6D:A9:60:29:EC:DE:94:86:1D"]
+      }
+    }]
