@@ -5,6 +5,12 @@ const AnimatePresence = window.Motion.AnimatePresence;
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzbw0AvPwil9owUhJXhyaKDrrMfuHgM52XLPIkRUbw0jpif5c7AxDMxqcSRIrtdTuM/exec";
 const STORAGE_KEY = 'smartcart-pro-v2';
 
+// Token compartido para que tu Apps Script rechace llamadas que no vengan
+// de esta app. CAMBIA este valor por uno propio (cualquier texto largo y
+// random sirve) y pega el MISMO valor en tu Apps Script — ver instrucciones
+// al final de scripts.js.
+const APP_TOKEN = "4KjE1sf6yja7hpiboccqRVrqc10a";
+
 // ─── MAPA DE IMÁGENES ────────────────────────────────────────────────────────
 const IMAGE_MAP = {
     'quifaro':      'https://i.postimg.cc/NFdtj6bC/1085998.png',
@@ -75,10 +81,28 @@ function App() {
     const [editandoId, setEditandoId]         = useState(null);
     const [editandoNombreId, setEditandoNombreId] = useState(null);
     const [confirmReset, setConfirmReset]     = useState(false);
+    const [bottomBarHeight, setBottomBarHeight] = useState(240);
+    const [duplicado, setDuplicado]           = useState(false);
 
     const lastPostTs    = useRef(0);
     const pendingSync   = useRef(null);
     const isSyncingRef  = useRef(false);
+    const bottomBarRef  = useRef(null);
+    const duplicadoTimer = useRef(null);
+
+    // Mide el alto real del panel inferior (cambia cuando aparece el botón
+    // "Restablecer lista") para que el último producto nunca quede tapado.
+    useEffect(() => {
+        const el = bottomBarRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                setBottomBarHeight(Math.ceil(entry.contentRect.height));
+            }
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     useEffect(() => {
         const on  = () => setIsOnline(true);
@@ -95,7 +119,7 @@ function App() {
         if (!navigator.onLine) { setIsLoaded(true); return; }
         setSyncState('syncing');
         try {
-            const res  = await fetch(WEB_APP_URL + '?t=' + Date.now());
+            const res  = await fetch(WEB_APP_URL + '?t=' + Date.now() + '&token=' + encodeURIComponent(APP_TOKEN));
             const data = await res.json();
             if (data && Array.isArray(data) && data.length > 0) {
                 if (Date.now() - lastPostTs.current > 5000) {
@@ -140,7 +164,7 @@ function App() {
         isSyncingRef.current = true;
         setSyncState('syncing');
         try {
-            const res = await fetch(WEB_APP_URL, {
+            const res = await fetch(WEB_APP_URL + '?token=' + encodeURIComponent(APP_TOKEN), {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify(datos),
@@ -193,15 +217,21 @@ function App() {
         e.preventDefault();
         const nombre = nuevo.nombre.trim();
         if (!nombre) return;
+
+        const yaExiste = productos.some(x => x.nombre.toLowerCase() === nombre.toLowerCase());
+        if (yaExiste) {
+            setDuplicado(true);
+            clearTimeout(duplicadoTimer.current);
+            duplicadoTimer.current = setTimeout(() => setDuplicado(false), 2500);
+            return;
+        }
+
         setNuevo({ nombre: '' });
-        setProductos(prev => {
-            const yaExiste = prev.some(x => x.nombre.toLowerCase() === nombre.toLowerCase());
-            if (yaExiste) return prev;
-            return [
-                { id: Date.now() + Math.floor(Math.random() * 100000), nombre, comprado: false, precio: 0 },
-                ...prev
-            ];
-        });
+        setDuplicado(false);
+        setProductos(prev => [
+            { id: Date.now() + Math.floor(Math.random() * 100000), nombre, comprado: false, precio: 0 },
+            ...prev
+        ]);
     };
 
     const toggleGuard = useRef(new Set());
@@ -265,14 +295,21 @@ function App() {
                 <input
                     type="text"
                     placeholder="Ej: 4 Mostaccioli"
+                    aria-label="Nombre del producto"
                     className="flex-1 bg-transparent px-4 py-2 outline-none text-white text-sm"
                     value={nuevo.nombre}
-                    onChange={e => setNuevo({ nombre: e.target.value })}
+                    onChange={e => { setNuevo({ nombre: e.target.value }); if (duplicado) setDuplicado(false); }}
                 />
-                <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-xl font-bold text-xl">+</button>
+                <button type="submit" aria-label="Agregar producto" className="bg-blue-600 text-white w-10 h-10 rounded-xl font-bold text-xl">+</button>
             </form>
 
-            <div className="space-y-3 pb-48">
+            {duplicado && (
+                <p className="text-red-400 text-[11px] font-bold -mt-6 mb-6 px-1">
+                    ⚠️ "{nuevo.nombre.trim()}" ya está en tu lista
+                </p>
+            )}
+
+            <div className="space-y-3" style={{ paddingBottom: bottomBarHeight + 24 }}>
                 <AnimatePresence mode="popLayout">
                     {productosOrdenados.map((p) => {
                         const cant = obtenerCantidad(p.nombre);
@@ -289,6 +326,7 @@ function App() {
                                 <button
                                     onClick={(e) => { e.stopPropagation(); toggleComprado(p.id); }}
                                     className={`check-button ${p.comprado ? 'check-active' : ''}`}
+                                    aria-label={p.comprado ? `Marcar ${p.nombre} como pendiente` : `Marcar ${p.nombre} como comprado`}
                                 >
                                     {p.comprado && <span className="text-white text-xs font-bold">✓</span>}
                                 </button>
@@ -351,7 +389,7 @@ function App() {
                                     </div>
                                 </div>
 
-                                <button onClick={() => eliminar(p.id)} className="text-slate-300 hover:text-red-500 flex-shrink-0">
+                                <button onClick={() => eliminar(p.id)} className="text-slate-300 hover:text-red-500 flex-shrink-0" aria-label={`Eliminar ${p.nombre}`}>
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
                                             d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -369,9 +407,23 @@ function App() {
                         <p className="text-sm mt-1">Agrega productos arriba</p>
                     </div>
                 )}
+
+                {productos.length === 0 && !isLoaded && (
+                    <div className="text-center py-16 text-slate-500">
+                        <svg className="animate-spin w-8 h-8 mx-auto mb-3 text-blue-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                        </svg>
+                        <p className="text-sm">Cargando tu lista...</p>
+                    </div>
+                )}
             </div>
 
-            <div className="fixed bottom-0 left-0 right-0 p-4 z-50">
+            <div
+                ref={bottomBarRef}
+                className="fixed bottom-0 left-0 right-0 p-4 z-50"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}
+            >
                 <div className="max-w-2xl mx-auto bg-slate-900/90 backdrop-blur-xl rounded-3xl p-5 border border-white/10 shadow-2xl">
                     <div className="flex justify-around items-center mb-4">
                         <div className="text-center">
@@ -421,8 +473,47 @@ function App() {
     );
 }
 
+// ─── ERROR BOUNDARY ──────────────────────────────────────────────────────────
+// Evita que un error inesperado deje al usuario con pantalla en blanco.
+class ErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+    static getDerivedStateFromError() {
+        return { hasError: true };
+    }
+    componentDidCatch(error, info) {
+        console.error('SmartCart: error capturado', error, info);
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{
+                    minHeight: '100vh', display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center', color: 'white',
+                    textAlign: 'center', padding: '2rem', fontFamily: 'Inter, sans-serif'
+                }}>
+                    <p style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>⚠️</p>
+                    <p style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Algo salió mal</p>
+                    <p style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1.25rem' }}>
+                        Intenta recargar la aplicación. Tu lista no se pierde, queda guardada en este celular.
+                    </p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        style={{ background: '#2563eb', color: 'white', padding: '0.6rem 1.5rem', borderRadius: '0.75rem', fontWeight: 700, border: 'none' }}
+                    >
+                        Recargar
+                    </button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+root.render(<ErrorBoundary><App /></ErrorBoundary>);
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -431,3 +522,17 @@ if ('serviceWorker' in navigator) {
             .catch(err => console.log('Error al activar modo offline', err));
     });
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   PROTECCIÓN DE TU APPS SCRIPT CON TOKEN — YA APLICADA
+   ──────────────────────────────────────────────────────────────────────────
+   El archivo Code.gs (entregado junto a este scripts.js) ya tiene la
+   validación de APP_TOKEN agregada en doGet y doPost. Solo falta:
+
+   1) Reemplazar el contenido de tu Apps Script por el de Code.gs
+      (o pegar manualmente las líneas de validación si prefieres conservar
+      tu archivo tal cual).
+   2) Deploy > Manage deployments > ✏️ editar tu implementación activa >
+      Versión: "Nueva versión" > Implementar — para que el cambio quede
+      activo en la URL que ya usa la app (WEB_APP_URL no cambia).
+   ────────────────────────────────────────────────────────────────────── */
