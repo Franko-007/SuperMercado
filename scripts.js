@@ -778,11 +778,9 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<ErrorBoundary><App /></ErrorBoundary>);
 
 if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('SmartCart: Modo Offline Activo', reg))
-            .catch(err => console.log('Error al activar modo offline', err));
-    });
+    // El registro del Service Worker ahora ocurre en un <script> plano dentro
+    // de index.html (no depende de Babel/React), así se activa más rápido.
+    // Acá solo escuchamos cuándo cambia a una versión nueva para avisar al usuario.
 
     // 'controllerchange' se dispara cuando un Service Worker nuevo toma el
     // control. Solo avisamos si YA había un controlador antes (es decir, esto
