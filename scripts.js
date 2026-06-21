@@ -605,6 +605,11 @@ function App() {
             )}
 
             <div style={{ paddingBottom: bottomBarHeight + 24 }}>
+                {pendientes.length > 0 && (
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3 px-1">
+                        Pendientes ({pendientes.length})
+                    </p>
+                )}
                 <Reorder.Group as="div" axis="y" values={pendientes} onReorder={reordenarPendientes} className="space-y-3">
                     <AnimatePresence mode="popLayout">
                         {pendientes.map((p) => (
@@ -625,24 +630,29 @@ function App() {
                 </Reorder.Group>
 
                 {comprados.length > 0 && (
-                    <Reorder.Group as="div" axis="y" values={comprados} onReorder={reordenarComprados} className="space-y-3 mt-3">
-                        <AnimatePresence mode="popLayout">
-                            {comprados.map((p) => (
-                                <ProductoCard
-                                    key={p.id}
-                                    p={p}
-                                    editandoNombreId={editandoNombreId}
-                                    setEditandoNombreId={setEditandoNombreId}
-                                    editandoId={editandoId}
-                                    setEditandoId={setEditandoId}
-                                    actualizarNombre={actualizarNombre}
-                                    actualizarPrecio={actualizarPrecio}
-                                    toggleComprado={toggleComprado}
-                                    eliminar={eliminar}
-                                />
-                            ))}
-                        </AnimatePresence>
-                    </Reorder.Group>
+                    <>
+                        <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider mb-3 mt-7 px-1">
+                            ✓ En el carro ({comprados.length})
+                        </p>
+                        <Reorder.Group as="div" axis="y" values={comprados} onReorder={reordenarComprados} className="space-y-3">
+                            <AnimatePresence mode="popLayout">
+                                {comprados.map((p) => (
+                                    <ProductoCard
+                                        key={p.id}
+                                        p={p}
+                                        editandoNombreId={editandoNombreId}
+                                        setEditandoNombreId={setEditandoNombreId}
+                                        editandoId={editandoId}
+                                        setEditandoId={setEditandoId}
+                                        actualizarNombre={actualizarNombre}
+                                        actualizarPrecio={actualizarPrecio}
+                                        toggleComprado={toggleComprado}
+                                        eliminar={eliminar}
+                                    />
+                                ))}
+                            </AnimatePresence>
+                        </Reorder.Group>
+                    </>
                 )}
 
                 {productos.length === 0 && isLoaded && (
