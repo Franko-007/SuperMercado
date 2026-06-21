@@ -198,6 +198,7 @@ function App() {
     const [lastEliminado, setLastEliminado]   = useState(null);
     const [installPrompt, setInstallPrompt]   = useState(null);
     const [appActualizada, setAppActualizada] = useState(false);
+    const [celebracion, setCelebracion]       = useState(false);
 
     const lastPostTs    = useRef(0);
     const pendingSync   = useRef(null);
@@ -293,6 +294,32 @@ function App() {
 
     useEffect(() => { cargarDesdeNube(); }, []);
 
+    // Auto-sincronizar al volver a la app: si alguien más agregó o marcó
+    // productos desde otro celular mientras esta pestaña estaba en segundo
+    // plano, los traemos apenas vuelves a mirarla.
+    useEffect(() => {
+        const onVisible = () => {
+            if (document.visibilityState === 'visible') cargarDesdeNube();
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        window.addEventListener('focus', onVisible);
+        return () => {
+            document.removeEventListener('visibilitychange', onVisible);
+            window.removeEventListener('focus', onVisible);
+        };
+    }, [cargarDesdeNube]);
+
+    // Además, mientras la app sigue abierta y visible, refrescamos cada
+    // cierto tiempo para que la lista se mantenga al día entre celulares.
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (document.visibilityState === 'visible' && navigator.onLine) {
+                cargarDesdeNube();
+            }
+        }, 25000);
+        return () => clearInterval(interval);
+    }, [cargarDesdeNube]);
+
     const enviarANube = useCallback(async (datos) => {
         if (!navigator.onLine || !datos || datos.length === 0) return;
 
@@ -349,6 +376,33 @@ function App() {
         return { total, comprado, done: listos, totalItems, porcentaje };
     }, [productos]);
 
+    // "¡Compra completa!" — se muestra solo en el instante en que pasas de
+    // "no todo comprado" a "todo comprado", no cada vez que la lista ya está completa.
+    const todoCompradoAntes = useRef(false);
+    useEffect(() => {
+        const todoComprado = stats.totalItems > 0 && stats.done === stats.totalItems;
+        if (todoComprado && !todoCompradoAntes.current) {
+            setCelebracion(true);
+            if (navigator.vibrate) navigator.vibrate([15, 60, 15]);
+            const t = setTimeout(() => setCelebracion(false), 4000);
+            todoCompradoAntes.current = todoComprado;
+            return () => clearTimeout(t);
+        }
+        todoCompradoAntes.current = todoComprado;
+    }, [stats.done, stats.totalItems]);
+
+    // Badge en el ícono de la app instalada con la cantidad de productos
+    // pendientes (solo funciona si el navegador soporta la Badging API).
+    useEffect(() => {
+        if (!('setAppBadge' in navigator)) return;
+        const pendientesCount = productos.filter(p => !p.comprado).length;
+        if (pendientesCount > 0) {
+            navigator.setAppBadge(pendientesCount).catch(() => {});
+        } else if ('clearAppBadge' in navigator) {
+            navigator.clearAppBadge().catch(() => {});
+        }
+    }, [productos]);
+
     const productosOrdenados = useMemo(() =>
         [...productos].sort((a, b) => a.comprado - b.comprado),
     [productos]);
@@ -393,6 +447,7 @@ function App() {
         if (toggleGuard.current.has(id)) return;
         toggleGuard.current.add(id);
         setTimeout(() => toggleGuard.current.delete(id), 300);
+        if (navigator.vibrate) navigator.vibrate(15);
         setProductos(prev => prev.map(x => x.id === id ? { ...x, comprado: !x.comprado } : x));
     }, []);
 
@@ -494,6 +549,17 @@ function App() {
                     </p>
                 </div>
             </header>
+
+            {celebracion && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="mb-6 text-center bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-bold px-4 py-3 rounded-xl"
+                >
+                    🎉 ¡Compra completa! Marcaste todos los productos.
+                </motion.div>
+            )}
 
             {appActualizada && (
                 <motion.div
