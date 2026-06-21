@@ -1,5 +1,5 @@
-const APP_CACHE = 'smartcart-v101-cache';
-const IMG_CACHE = 'smartcart-images-v1';
+const APP_CACHE = 'smartcart-v102-cache';
+const IMG_CACHE = 'smartcart-images-v2';
 
 // Assets de la app (HTML/CSS/JS) — se revisan primero contra la red
 // para que las actualizaciones de código lleguen rápido.
@@ -7,7 +7,7 @@ const appAssets = [
   './',
   './index.html',
   './style.css?v=101',
-  './scripts.js?v=101',
+  './scripts.js?v=102',
   './manifest.json',
 ];
 
@@ -15,8 +15,9 @@ const appAssets = [
 // para que funcionen offline desde la primera apertura y no dependan
 // de que postimg.cc / icons8.com estén disponibles en ese momento.
 const imageAssets = [
-  'https://i.postimg.cc/brzcJNRF/Whats-App-Image-2026-03-07-at-13-14-51.jpg',
-  'https://i.postimg.cc/h4bMb0SR/maskable-icon.png',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-512-maskable.png',
   'https://i.postimg.cc/6pbD2Q42/icons8-carrito-de-compras-emoji-48.png',
   'https://i.postimg.cc/NFdtj6bC/1085998.png',
   'https://i.postimg.cc/6qbsX95Z/Bebida.png',
