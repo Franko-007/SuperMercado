@@ -200,12 +200,14 @@ function App() {
     const [appActualizada, setAppActualizada] = useState(false);
     const [celebracion, setCelebracion]       = useState(false);
 
-    const lastPostTs    = useRef(0);
-    const pendingSync   = useRef(null);
-    const isSyncingRef  = useRef(false);
-    const bottomBarRef  = useRef(null);
-    const duplicadoTimer = useRef(null);
-    const undoTimer      = useRef(null);
+    const lastPostTs      = useRef(0);
+    const lastLocalChange = useRef(0);   // timestamp del último cambio hecho por el usuario
+    const pendingSync     = useRef(null);
+    const isSyncingRef    = useRef(false);
+    const bottomBarRef    = useRef(null);
+    const duplicadoTimer  = useRef(null);
+    const undoTimer       = useRef(null);
+    const ordenOriginal   = useRef([]);  // IDs en el orden en que llegaron de la nube → para restaurar al resetear
 
     // Botón propio de "instalar app": Chrome dispara este evento en vez de
     // mostrar su banner automático cuando se previene el comportamiento por defecto.
@@ -263,7 +265,14 @@ function App() {
             const res  = await fetch(WEB_APP_URL + '?t=' + Date.now() + '&token=' + encodeURIComponent(APP_TOKEN));
             const data = await res.json();
             if (data && Array.isArray(data) && data.length > 0) {
-                if (Date.now() - lastPostTs.current > 5000) {
+                // No sobreescribir si el usuario hizo algún cambio en los últimos 15 segundos.
+                // Antes la guarda era de solo 5s desde el último POST, pero como el sync timer
+                // espera 2s antes de postear, había una ventana en la que un GET llegaba antes
+                // del POST y pisaba el cambio local. Con 15s desde cualquier cambio del usuario
+                // queda suficiente margen.
+                const sinCambiosRecientes = Date.now() - lastLocalChange.current > 15000;
+                const sinPostReciente     = Date.now() - lastPostTs.current > 5000;
+                if (sinCambiosRecientes && sinPostReciente) {
                     const seen = new Set();
                     const deduped = data
                         .map(item => ({
@@ -281,6 +290,8 @@ function App() {
                             return true;
                         });
                     setProductos(deduped);
+                    // Guardar el orden en que llegaron de la nube para poder restaurarlo al resetear
+                    ordenOriginal.current = deduped.map(p => p.id);
                 }
             }
         } catch (e) {
@@ -414,10 +425,12 @@ function App() {
     const comprados  = useMemo(() => productos.filter(p => p.comprado), [productos]);
 
     const reordenarPendientes = useCallback((nuevoOrden) => {
+        lastLocalChange.current = Date.now();
         setProductos(prev => [...nuevoOrden, ...prev.filter(p => p.comprado)]);
     }, []);
 
     const reordenarComprados = useCallback((nuevoOrden) => {
+        lastLocalChange.current = Date.now();
         setProductos(prev => [...prev.filter(p => !p.comprado), ...nuevoOrden]);
     }, []);
 
@@ -436,8 +449,11 @@ function App() {
 
         setNuevo({ nombre: '' });
         setDuplicado(false);
+        lastLocalChange.current = Date.now();
+        const nuevoId = Date.now() + Math.floor(Math.random() * 100000);
+        ordenOriginal.current = [nuevoId, ...ordenOriginal.current];
         setProductos(prev => [
-            { id: Date.now() + Math.floor(Math.random() * 100000), nombre, comprado: false, precio: 0 },
+            { id: nuevoId, nombre, comprado: false, precio: 0 },
             ...prev
         ]);
     };
@@ -447,19 +463,24 @@ function App() {
         if (toggleGuard.current.has(id)) return;
         toggleGuard.current.add(id);
         setTimeout(() => toggleGuard.current.delete(id), 300);
+        lastLocalChange.current = Date.now();
         if (navigator.vibrate) navigator.vibrate(15);
         setProductos(prev => prev.map(x => x.id === id ? { ...x, comprado: !x.comprado } : x));
     }, []);
 
     const actualizarPrecio = useCallback((id, precio) => {
+        lastLocalChange.current = Date.now();
         setProductos(prev => prev.map(x => x.id === id ? { ...x, precio: parsePrecio(precio) } : x));
     }, []);
 
     const actualizarNombre = useCallback((id, nombre) => {
+        lastLocalChange.current = Date.now();
         setProductos(prev => prev.map(x => x.id === id ? { ...x, nombre } : x));
     }, []);
 
     const eliminar = useCallback((id) => {
+        lastLocalChange.current = Date.now();
+        ordenOriginal.current = ordenOriginal.current.filter(x => x !== id);
         setProductos(prev => {
             const item = prev.find(x => x.id === id);
             if (item) {
@@ -508,7 +529,21 @@ function App() {
             setTimeout(() => setConfirmReset(false), 3000);
             return;
         }
-        setProductos(prev => prev.map(p => ({ ...p, comprado: false })));
+        setProductos(prev => {
+            // Desmarcar todos y restaurar el orden en que llegaron de la nube.
+            // Si el usuario agregó productos nuevos después (no están en ordenOriginal),
+            // van al final, en el orden en que fueron agregados.
+            const desmarcados = prev.map(p => ({ ...p, comprado: false }));
+            const orden = ordenOriginal.current;
+            if (orden.length === 0) return desmarcados;
+
+            const enOrden  = orden
+                .map(id => desmarcados.find(p => p.id === id))
+                .filter(Boolean);
+            const nuevos   = desmarcados.filter(p => !orden.includes(p.id));
+            return [...enOrden, ...nuevos];
+        });
+        lastLocalChange.current = Date.now();
         setConfirmReset(false);
     }, [confirmReset]);
 
