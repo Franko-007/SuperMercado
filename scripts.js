@@ -274,7 +274,8 @@ function App() {
                 const sinPostReciente     = Date.now() - lastPostTs.current > 5000;
                 if (sinCambiosRecientes && sinPostReciente) {
                     const seen = new Set();
-                    const deduped = data
+                    let huboIdsDuplicados = false;
+                    const reparados = data
                         .map(item => ({
                             ...item,
                             id: Number(item.id) || Date.now() + Math.random(),
@@ -282,16 +283,29 @@ function App() {
                             comprado: Boolean(item.comprado),
                             nombre: String(item.nombre || '').trim(),
                         }))
-                        .filter(item => {
-                            if (!item.nombre) return false;
-                            const key = item.id;
-                            if (seen.has(key)) return false;
-                            seen.add(key);
-                            return true;
+                        .filter(item => item.nombre)
+                        .map(item => {
+                            // En vez de descartar productos con ID repetido (lo que borraba
+                            // datos reales), les asignamos un ID nuevo y único para que
+                            // ningún producto se pierda. Esto repara datos viejos de una
+                            // versión anterior de la app que reutilizaba el mismo ID.
+                            if (seen.has(item.id)) {
+                                huboIdsDuplicados = true;
+                                return { ...item, id: Date.now() + Math.random() + Math.floor(Math.random() * 1000000) };
+                            }
+                            seen.add(item.id);
+                            return item;
                         });
-                    setProductos(deduped);
+                    setProductos(reparados);
                     // Guardar el orden en que llegaron de la nube para poder restaurarlo al resetear
-                    ordenOriginal.current = deduped.map(p => p.id);
+                    ordenOriginal.current = reparados.map(p => p.id);
+
+                    // Si reparamos algún ID duplicado, subimos de inmediato los datos
+                    // corregidos para que la hoja de cálculo quede con IDs únicos y
+                    // este problema no se repita en la próxima carga.
+                    if (huboIdsDuplicados) {
+                        enviarANube(reparados);
+                    }
                 }
             }
         } catch (e) {
