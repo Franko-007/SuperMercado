@@ -208,6 +208,7 @@ function App() {
     const duplicadoTimer  = useRef(null);
     const undoTimer       = useRef(null);
     const ordenOriginal   = useRef([]);  // IDs en el orden en que llegaron de la nube → para restaurar al resetear
+    const cargandoRef     = useRef(false); // evita que dos triggers (focus + visibilitychange) carguen a la vez
 
     // Botón propio de "instalar app": Chrome dispara este evento en vez de
     // mostrar su banner automático cuando se previene el comportamiento por defecto.
@@ -260,6 +261,12 @@ function App() {
 
     const cargarDesdeNube = useCallback(async () => {
         if (!navigator.onLine) { setIsLoaded(true); return; }
+        // Evita que dos disparadores (p.ej. 'focus' y 'visibilitychange' al
+        // volver a la app) corran esta función al mismo tiempo — eso generaba
+        // dos reparaciones de IDs distintas compitiendo entre sí, y por eso
+        // los IDs duplicados volvían a aparecer una y otra vez.
+        if (cargandoRef.current) return;
+        cargandoRef.current = true;
         setSyncState('syncing');
         try {
             const res  = await fetch(WEB_APP_URL + '?t=' + Date.now() + '&token=' + encodeURIComponent(APP_TOKEN));
@@ -275,10 +282,15 @@ function App() {
                 if (sinCambiosRecientes && sinPostReciente) {
                     const seen = new Set();
                     let huboIdsDuplicados = false;
+                    let siguienteId = data.reduce((max, item) => {
+                        const n = Number(item.id);
+                        return Number.isFinite(n) && n > max ? n : max;
+                    }, 0) + 1;
+
                     const reparados = data
                         .map(item => ({
                             ...item,
-                            id: Number(item.id) || Date.now() + Math.random(),
+                            id: Number(item.id) || 0,
                             precio: parsePrecio(item.precio),
                             comprado: Boolean(item.comprado),
                             nombre: String(item.nombre || '').trim(),
@@ -289,9 +301,11 @@ function App() {
                             // datos reales), les asignamos un ID nuevo y único para que
                             // ningún producto se pierda. Esto repara datos viejos de una
                             // versión anterior de la app que reutilizaba el mismo ID.
-                            if (seen.has(item.id)) {
+                            // Usamos números secuenciales simples (1, 2, 3...) en vez de
+                            // timestamps, para que sean legibles en la hoja de cálculo.
+                            if (!item.id || seen.has(item.id)) {
                                 huboIdsDuplicados = true;
-                                return { ...item, id: Date.now() + Math.random() + Math.floor(Math.random() * 1000000) };
+                                return { ...item, id: siguienteId++ };
                             }
                             seen.add(item.id);
                             return item;
@@ -312,6 +326,7 @@ function App() {
             console.error('cargarDesdeNube:', e);
             setSyncState('error');
         } finally {
+            cargandoRef.current = false;
             setSyncState('idle');
             setIsLoaded(true);
         }
@@ -464,7 +479,9 @@ function App() {
         setNuevo({ nombre: '' });
         setDuplicado(false);
         lastLocalChange.current = Date.now();
-        const nuevoId = Date.now() + Math.floor(Math.random() * 100000);
+        // ID secuencial simple (1, 2, 3...) en vez de timestamp — más legible
+        // en la hoja de cálculo. Se calcula como el mayor ID actual + 1.
+        const nuevoId = productos.reduce((max, p) => Number(p.id) > max ? Number(p.id) : max, 0) + 1;
         ordenOriginal.current = [nuevoId, ...ordenOriginal.current];
         setProductos(prev => [
             { id: nuevoId, nombre, comprado: false, precio: 0 },
