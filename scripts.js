@@ -260,7 +260,11 @@ function App() {
     }, []);
 
     const cargarDesdeNube = useCallback(async () => {
-        if (!navigator.onLine) { setIsLoaded(true); return; }
+        // Ya NO cortamos acá si navigator.onLine dice "false": ese valor puede
+        // ser poco confiable justo al abrir la app recién (arranque en frío),
+        // reportando "sin conexión" por un instante aunque el wifi/datos ya
+        // estén activos. Dejamos que el propio fetch falle si de verdad no
+        // hay red — el catch de abajo ya maneja ese caso.
         // Evita que dos disparadores (p.ej. 'focus' y 'visibilitychange' al
         // volver a la app) corran esta función al mismo tiempo — eso generaba
         // dos reparaciones de IDs distintas compitiendo entre sí, y por eso
@@ -316,9 +320,18 @@ function App() {
 
                     // Si reparamos algún ID duplicado, subimos de inmediato los datos
                     // corregidos para que la hoja de cálculo quede con IDs únicos y
-                    // este problema no se repita en la próxima carga.
+                    // este problema no se repita en la próxima carga. Reintentamos
+                    // varias veces si falla: si este envío se pierde (por ejemplo,
+                    // por una red todavía inestable justo al abrir la app), la
+                    // reparación solo queda en el celular y nunca se guarda en la
+                    // hoja — la próxima carga vuelve a ver los mismos duplicados
+                    // de siempre y repara sin fin, sin arreglar nada de verdad.
                     if (huboIdsDuplicados) {
-                        enviarANube(reparados);
+                        for (let intento = 1; intento <= 4; intento++) {
+                            const ok = await enviarANube(reparados);
+                            if (ok) break;
+                            await new Promise(r => setTimeout(r, 1500 * intento));
+                        }
                     }
                 }
             }
@@ -361,15 +374,16 @@ function App() {
     }, [cargarDesdeNube]);
 
     const enviarANube = useCallback(async (datos) => {
-        if (!navigator.onLine || !datos || datos.length === 0) return;
+        if (!datos || datos.length === 0) return false;
 
         if (isSyncingRef.current) {
             pendingSync.current = datos;
-            return;
+            return false;
         }
 
         isSyncingRef.current = true;
         setSyncState('syncing');
+        let exito = false;
         try {
             const res = await fetch(WEB_APP_URL + '?token=' + encodeURIComponent(APP_TOKEN), {
                 method: 'POST',
@@ -378,6 +392,7 @@ function App() {
             });
             if (res.ok) {
                 lastPostTs.current = Date.now();
+                exito = true;
             }
         } catch (e) {
             console.error('enviarANube:', e);
@@ -392,6 +407,7 @@ function App() {
                 enviarANube(next);
             }
         }
+        return exito;
     }, []);
 
     const syncTimer = useRef(null);
