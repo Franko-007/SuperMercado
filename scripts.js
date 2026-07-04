@@ -270,6 +270,11 @@ function App() {
         // dos reparaciones de IDs distintas compitiendo entre sí, y por eso
         // los IDs duplicados volvían a aparecer una y otra vez.
         if (cargandoRef.current) return;
+        // Tampoco leer si hay un envío a la nube en curso: si justo en ese
+        // instante la escritura todavía no termina de guardarse, esta lectura
+        // vería datos viejos y "repararía" de nuevo con otros IDs — entrando
+        // en un ciclo sin fin de lecturas y escrituras que se pisan entre sí.
+        if (isSyncingRef.current) return;
         cargandoRef.current = true;
         setSyncState('syncing');
         try {
@@ -327,10 +332,18 @@ function App() {
                     // hoja — la próxima carga vuelve a ver los mismos duplicados
                     // de siempre y repara sin fin, sin arreglar nada de verdad.
                     if (huboIdsDuplicados) {
+                        let seGuardo = false;
                         for (let intento = 1; intento <= 4; intento++) {
                             const ok = await enviarANube(reparados);
-                            if (ok) break;
+                            if (ok) { seGuardo = true; break; }
                             await new Promise(r => setTimeout(r, 1500 * intento));
+                        }
+                        // Aviso en pantalla si después de 4 intentos no se pudo guardar,
+                        // para que quede claro que hay que revisar la conexión o el
+                        // Apps Script, en vez de que la app siga reintentando en silencio.
+                        if (!seGuardo) {
+                            console.error('No se pudo guardar la reparación de IDs después de 4 intentos.');
+                            setSyncState('error');
                         }
                     }
                 }
@@ -351,12 +364,19 @@ function App() {
     // productos desde otro celular mientras esta pestaña estaba en segundo
     // plano, los traemos apenas vuelves a mirarla.
     useEffect(() => {
+        const onVisibleTimer = { current: null };
         const onVisible = () => {
-            if (document.visibilityState === 'visible') cargarDesdeNube();
+            if (document.visibilityState !== 'visible') return;
+            // 'focus' y 'visibilitychange' suelen dispararse casi al mismo
+            // tiempo al volver a la app — este pequeño debounce evita que
+            // ambos terminen llamando a cargarDesdeNube por separado.
+            clearTimeout(onVisibleTimer.current);
+            onVisibleTimer.current = setTimeout(() => cargarDesdeNube(), 200);
         };
         document.addEventListener('visibilitychange', onVisible);
         window.addEventListener('focus', onVisible);
         return () => {
+            clearTimeout(onVisibleTimer.current);
             document.removeEventListener('visibilitychange', onVisible);
             window.removeEventListener('focus', onVisible);
         };
