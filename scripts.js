@@ -6,6 +6,7 @@ const useDragControls = window.Motion.useDragControls;
 
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzbw0AvPwil9owUhJXhyaKDrrMfuHgM52XLPIkRUbw0jpif5c7AxDMxqcSRIrtdTuM/exec";
 const STORAGE_KEY = 'smartcart-pro-v2';
+const HISTORIAL_KEY = 'smartcart-historial-v1';
 
 // Token compartido para que tu Apps Script rechace llamadas que no vengan
 // de esta app. CAMBIA este valor por uno propio (cualquier texto largo y
@@ -142,9 +143,17 @@ function ProductoCard({
                         {editandoId === p.id ? (
                             <input
                                 autoFocus
-                                type="number"
-                                defaultValue={p.precio || ''}
+                                type="text"
+                                inputMode="numeric"
+                                defaultValue={p.precio ? p.precio.toLocaleString('es-CL') : ''}
                                 className="bg-blue-50 text-blue-600 font-bold w-24 outline-none border border-blue-500 rounded px-1"
+                                onChange={e => {
+                                    // Formatea con puntos de miles en vivo mientras se escribe
+                                    // (ej: 12990 -> 12.990), quitando cualquier caracter que
+                                    // no sea número antes de reformatear.
+                                    const digits = e.target.value.replace(/\D/g, '');
+                                    e.target.value = digits ? Number(digits).toLocaleString('es-CL') : '';
+                                }}
                                 onBlur={e => { actualizarPrecio(p.id, e.target.value); setEditandoId(null); }}
                                 onKeyDown={e => e.key === 'Enter' && e.target.blur()}
                             />
@@ -188,6 +197,14 @@ function App() {
             return saved ? JSON.parse(saved) : [];
         } catch { return []; }
     });
+    const [historial, setHistorial] = useState(() => {
+        try {
+            const saved = localStorage.getItem(HISTORIAL_KEY);
+            return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+    });
+    const [mostrarHistorial, setMostrarHistorial] = useState(false);
+    const [pendienteSync, setPendienteSync] = useState(false);
 
     const [nuevo, setNuevo]                   = useState({ nombre: '' });
     const [editandoId, setEditandoId]         = useState(null);
@@ -435,10 +452,14 @@ function App() {
     useEffect(() => {
         if (!isLoaded) return;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(productos));
+        setPendienteSync(true);
 
         clearTimeout(syncTimer.current);
-        syncTimer.current = setTimeout(() => {
-            if (navigator.onLine) enviarANube(productos);
+        syncTimer.current = setTimeout(async () => {
+            if (navigator.onLine) {
+                const ok = await enviarANube(productos);
+                if (ok) setPendienteSync(false);
+            }
         }, 2000);
 
         return () => clearTimeout(syncTimer.current);
@@ -597,6 +618,27 @@ function App() {
             setTimeout(() => setConfirmReset(false), 3000);
             return;
         }
+
+        // Guardar un registro en el historial de compras antes de desmarcar
+        // todo, para poder ver más adelante cuánto se gastó y cuándo.
+        // Es un registro local del celular (no se sube a la hoja de cálculo).
+        const compradosAntes = productos.filter(p => p.comprado);
+        if (compradosAntes.length > 0) {
+            const totalGastado = compradosAntes.reduce(
+                (acc, p) => acc + (Number(p.precio) || 0) * obtenerCantidad(p.nombre), 0
+            );
+            const entrada = {
+                fecha: Date.now(),
+                totalGastado,
+                cantidadProductos: compradosAntes.length,
+            };
+            setHistorial(prev => {
+                const actualizado = [entrada, ...prev].slice(0, 50); // conservar solo las últimas 50 compras
+                try { localStorage.setItem(HISTORIAL_KEY, JSON.stringify(actualizado)); } catch {}
+                return actualizado;
+            });
+        }
+
         setProductos(prev => {
             // Desmarcar todos y restaurar el orden en que llegaron de la nube.
             // Si el usuario agregó productos nuevos después (no están en ordenOriginal),
@@ -613,7 +655,7 @@ function App() {
         });
         lastLocalChange.current = Date.now();
         setConfirmReset(false);
-    }, [confirmReset]);
+    }, [confirmReset, productos]);
 
     return (
         <div className="max-w-2xl mx-auto p-4 md:p-10 flex flex-col min-h-screen">
@@ -630,6 +672,17 @@ function App() {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
+                    {historial.length > 0 && (
+                        <button
+                            onClick={() => setMostrarHistorial(true)}
+                            aria-label="Ver historial de compras"
+                            className="text-slate-400 hover:text-blue-400 transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </button>
+                    )}
                     {productos.length > 0 && (
                         <button
                             onClick={compartirLista}
@@ -647,11 +700,52 @@ function App() {
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
                         </svg>
                     )}
-                    <p className={`text-[10px] font-bold ${syncState === 'error' ? 'text-red-400' : 'text-slate-600'}`}>
-                        {syncState === 'syncing' ? 'SINCRONIZANDO...' : syncState === 'error' ? 'ERROR SYNC' : 'NUBE ACTIVA'}
+                    <p className={`text-[10px] font-bold ${syncState === 'error' ? 'text-red-400' : pendienteSync ? 'text-amber-400' : 'text-slate-600'}`}>
+                        {syncState === 'syncing'
+                            ? 'SINCRONIZANDO...'
+                            : syncState === 'error'
+                                ? 'ERROR SYNC'
+                                : pendienteSync
+                                    ? 'CAMBIOS PENDIENTES'
+                                    : 'NUBE ACTIVA'}
                     </p>
                 </div>
             </header>
+
+            {mostrarHistorial && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/70 z-[70] flex items-end sm:items-center justify-center p-4"
+                    onClick={() => setMostrarHistorial(false)}
+                >
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        onClick={e => e.stopPropagation()}
+                        className="bg-slate-800 border border-white/10 rounded-2xl p-5 w-full max-w-md max-h-[70vh] overflow-y-auto"
+                    >
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="font-bold text-lg">📋 Historial de compras</h2>
+                            <button onClick={() => setMostrarHistorial(false)} className="text-slate-400 hover:text-white" aria-label="Cerrar historial">✕</button>
+                        </div>
+                        <div className="space-y-2">
+                            {historial.map((h, i) => (
+                                <div key={h.fecha + '-' + i} className="flex items-center justify-between bg-white/5 rounded-xl px-3 py-2">
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-200">
+                                            {new Date(h.fecha).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                        </p>
+                                        <p className="text-[11px] text-slate-500">{h.cantidadProductos} producto{h.cantidadProductos !== 1 ? 's' : ''}</p>
+                                    </div>
+                                    <p className="text-emerald-400 font-bold">${h.totalGastado.toLocaleString('es-CL')}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
 
             {celebracion && (
                 <motion.div
