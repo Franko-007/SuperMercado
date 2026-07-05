@@ -290,10 +290,10 @@ function App() {
                 const sinPostReciente     = Date.now() - lastPostTs.current > 5000;
                 if (sinCambiosRecientes && sinPostReciente) {
                     const seen = new Set();
-                    let huboIdsDuplicados = false;
+                    let huboIdsQueReparar = false;
                     let siguienteId = data.reduce((max, item) => {
-                        const n = Number(item.id);
-                        return Number.isFinite(n) && n > max ? n : max;
+                        const n = Math.floor(Number(item.id) || 0);
+                        return n > max ? n : max;
                     }, 0) + 1;
 
                     const reparados = data
@@ -306,14 +306,16 @@ function App() {
                         }))
                         .filter(item => item.nombre)
                         .map(item => {
-                            // En vez de descartar productos con ID repetido (lo que borraba
-                            // datos reales), les asignamos un ID nuevo y único para que
-                            // ningún producto se pierda. Esto repara datos viejos de una
-                            // versión anterior de la app que reutilizaba el mismo ID.
-                            // Usamos números secuenciales simples (1, 2, 3...) en vez de
-                            // timestamps, para que sean legibles en la hoja de cálculo.
-                            if (!item.id || seen.has(item.id)) {
-                                huboIdsDuplicados = true;
+                            // Ojo: en la hoja estos "IDs duplicados" en realidad eran
+                            // números únicos con decimales (ej: 1772897740692.2898)
+                            // que Google Sheets mostraba redondeados, aparentando ser
+                            // el mismo número repetido — no había duplicados reales.
+                            // Por eso ahora reparamos dos casos: IDs con decimales
+                            // (!Number.isInteger) y, por si acaso, duplicados exactos
+                            // de verdad. Usamos números secuenciales simples (1, 2, 3...)
+                            // para que sean legibles en la hoja de cálculo.
+                            if (!item.id || !Number.isInteger(item.id) || seen.has(item.id)) {
+                                huboIdsQueReparar = true;
                                 return { ...item, id: siguienteId++ };
                             }
                             seen.add(item.id);
@@ -323,15 +325,14 @@ function App() {
                     // Guardar el orden en que llegaron de la nube para poder restaurarlo al resetear
                     ordenOriginal.current = reparados.map(p => p.id);
 
-                    // Si reparamos algún ID duplicado, subimos de inmediato los datos
-                    // corregidos para que la hoja de cálculo quede con IDs únicos y
-                    // este problema no se repita en la próxima carga. Reintentamos
-                    // varias veces si falla: si este envío se pierde (por ejemplo,
-                    // por una red todavía inestable justo al abrir la app), la
-                    // reparación solo queda en el celular y nunca se guarda en la
-                    // hoja — la próxima carga vuelve a ver los mismos duplicados
-                    // de siempre y repara sin fin, sin arreglar nada de verdad.
-                    if (huboIdsDuplicados) {
+                    // Si reparamos algún ID, subimos de inmediato los datos corregidos
+                    // para que la hoja de cálculo quede con IDs limpios y este problema
+                    // no se repita en la próxima carga. Reintentamos varias veces si
+                    // falla: si este envío se pierde (por ejemplo, por una red todavía
+                    // inestable justo al abrir la app), la reparación solo queda en el
+                    // celular y nunca se guarda en la hoja — la próxima carga vuelve a
+                    // ver los mismos IDs de siempre y repara sin fin, sin arreglar nada.
+                    if (huboIdsQueReparar) {
                         let seGuardo = false;
                         for (let intento = 1; intento <= 4; intento++) {
                             const ok = await enviarANube(reparados);
